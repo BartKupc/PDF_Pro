@@ -41,10 +41,17 @@ class PdfIntegrationTests(unittest.TestCase):
         from pdf_pro.document import NeedsPassword, WrongPassword, open_pdf
 
         with tempfile.TemporaryDirectory() as tmp:
+            plain = Path(tmp) / "plain.pdf"
             p = Path(tmp) / "enc.pdf"
-            self._make_pdf(p)
-            doc = fitz.open(p.as_posix())
-            doc.save(p.as_posix(), encryption=fitz.PDF_ENCRYPT_AES_256, user_pw="secret", owner_pw="owner")
+            self._make_pdf(plain)
+            doc = fitz.open(plain.as_posix())
+            # PyMuPDF refuses non-incremental save back to the opened path.
+            doc.save(
+                p.as_posix(),
+                encryption=fitz.PDF_ENCRYPT_AES_256,
+                user_pw="secret",
+                owner_pw="owner",
+            )
             doc.close()
             with self.assertRaises(NeedsPassword):
                 open_pdf(p)
@@ -91,32 +98,27 @@ class PdfIntegrationTests(unittest.TestCase):
         from pdf_pro.document import detect_digital_signature, open_pdf
 
         with tempfile.TemporaryDirectory() as tmp:
+            created = Path(tmp) / "created.pdf"
             p = Path(tmp) / "signed.pdf"
             doc = fitz.open()
             page = doc.new_page()
             page.insert_text((72, 72), "signed", fontsize=12)
-            # Insert a signature field if the API allows; otherwise a /Sig object via xml/json.
-            try:
-                widget = fitz.Widget()
-                widget.field_name = "Signature1"
-                widget.field_type = fitz.PDF_WIDGET_TYPE_SIGNATURE
-                widget.rect = fitz.Rect(72, 400, 200, 460)
-                page.add_widget(widget)
-            except Exception:
-                pass
-            doc.save(p.as_posix())
-            # Force a Sig dictionary into the file if widgets didn't stick
-            raw = p.read_bytes()
-            if b"/FT /Sig" not in raw and b"/Type /Sig" not in raw:
-                # append a dummy object comment is not enough; rewrite with xref injection
-                doc2 = fitz.open(p.as_posix())
-                # new dummy object
-                doc2._update_stream = getattr(doc2, "_update_stream", None)
-                doc2.save(p.as_posix(), incremental=False)
-                doc2.close()
+            widget = fitz.Widget()
+            widget.field_name = "Signature1"
+            widget.field_type = fitz.PDF_WIDGET_TYPE_SIGNATURE
+            widget.rect = fitz.Rect(72, 400, 200, 460)
+            page.add_widget(widget)
+            doc.save(created.as_posix())
+            doc.close()
+            raw = created.read_bytes()
+            self.assertTrue(
+                b"/FT /Sig" in raw or b"/Type /Sig" in raw or b"/Sig" in raw,
+                "signature widget did not persist in the fixture PDF",
+            )
+            created.replace(p)
             opened = open_pdf(p)
-            # detection is best-effort; widget path should work on recent PyMuPDF
-            _ = detect_digital_signature(opened.fitz_doc)
+            self.assertTrue(detect_digital_signature(opened.fitz_doc))
+            self.assertTrue(opened.has_digital_signature)
             opened.close()
 
     def test_refuse_overwrite_source(self):
@@ -134,7 +136,7 @@ class PdfIntegrationTests(unittest.TestCase):
         """Overlays are authored in get_pixmap/page.rect space; export must derotate."""
         from pdf_pro.document import file_sha256
         from pdf_pro.export import export_pdf
-        from pdf_pro.overlay import OverlayDocument, make_whiteout
+        from pdf_pro.overlay import OverlayDocument, make_text, make_whiteout
 
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "rotated.pdf"
@@ -156,6 +158,8 @@ class PdfIntegrationTests(unittest.TestCase):
             ov = OverlayDocument(source_path=str(p), source_sha256=before, page_count=1)
             # Visual-space white-out near the displayed top-left.
             ov.add(make_whiteout(0, 10, 10, 40, 30, color="#FFFFFF"))
+            # Visual-space red text; exercises derotate-rect + rotate=page.rotation.
+            ov.add(make_text(0, 10, 80, 80, 40, text="X", font_size=28, color="#FF0000"))
             dest = Path(tmp) / "rotated_amended.pdf"
             export_pdf(p, ov, dest)
             self.assertEqual(file_sha256(p), before)
@@ -174,6 +178,19 @@ class PdfIntegrationTests(unittest.TestCase):
             self.assertLess(r2, 40)
             self.assertLess(g2, 40)
             self.assertLess(b2, 40)
+            found_red = False
+            for y in range(80, 120):
+                for x in range(10, 90):
+                    rr, gg, bb = pix.pixel(x, y)
+                    if rr > 180 and gg < 80 and bb < 80:
+                        found_red = True
+                        break
+                if found_red:
+                    break
+            self.assertTrue(
+                found_red,
+                "text overlay not visible in visual-space box on rotated page",
+            )
 
 
 if __name__ == "__main__":
