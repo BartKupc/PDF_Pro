@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pdf-pro"
+version = "0.1.0"
+description = "Local-first Linux app to open, amend, sign, and export PDFs without touching the original."
+readme = "README.md"
+license = { text = "AGPL-3.0-only" }
+requires-python = ">=3.11"
+authors = [{ name = "BartKupc" }]
+dependencies = [
+  "PySide6>=6.6",
+  "pymupdf>=1.24",
+  "cryptography>=42",
+  "argon2-cffi>=23",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pyinstaller>=6"]
+
+[project.scripts]
+pdf-pro = "pdf_pro.app:main"
+PDF_Pro = "pdf_pro.app:main"
+
+[tool.setuptools.packages.find]
+include = ["pdf_pro*"]
+
+[tool.setuptools.package-data]
+pdf_pro = ["fonts/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=PDF_Pro
+Comment=Open, amend, sign, and export PDFs locally
+Exec=pdf-pro %f
+Icon=pdf-pro
+Terminal=false
+Categories=Office;Viewer;Graphics;
+MimeType=application/pdf;
+StartupWMClass=PDF_Pro
