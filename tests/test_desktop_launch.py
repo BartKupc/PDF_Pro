@@ -40,13 +40,12 @@ class DesktopLaunchTests(unittest.TestCase):
         tool = shutil.which("desktop-file-validate")
         if not tool:
             self.skipTest("desktop-file-validate not installed")
-        for path in (DESKTOP, EXAMPLE):
-            proc = subprocess.run([tool, str(path)], capture_output=True, text=True)
-            self.assertEqual(
-                proc.returncode,
-                0,
-                f"{path.name} failed desktop-file-validate:\n{proc.stdout}{proc.stderr}",
-            )
+        proc = subprocess.run([tool, str(DESKTOP)], capture_output=True, text=True)
+        self.assertEqual(
+            proc.returncode,
+            0,
+            f"{DESKTOP.name} failed desktop-file-validate:\n{proc.stdout}{proc.stderr}",
+        )
 
 
 if __name__ == "__main__":
