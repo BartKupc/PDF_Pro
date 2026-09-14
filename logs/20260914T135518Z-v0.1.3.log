@@ -1,0 +1,27 @@
+.F.................................ss.............................       [100%]
+=================================== FAILURES ===================================
+__________ DesktopLaunchTests.test_desktop_file_validate_if_installed __________
+
+self = <tests.test_desktop_launch.DesktopLaunchTests testMethod=test_desktop_file_validate_if_installed>
+
+    def test_desktop_file_validate_if_installed(self):
+        tool = shutil.which("desktop-file-validate")
+        if not tool:
+            self.skipTest("desktop-file-validate not installed")
+        for path in (DESKTOP, EXAMPLE):
+            proc = subprocess.run([tool, str(path)], capture_output=True, text=True)
+>           self.assertEqual(
+                proc.returncode,
+                0,
+                f"{path.name} failed desktop-file-validate:\n{proc.stdout}{proc.stderr}",
+            )
+E           AssertionError: 1 != 0 : pdf-pro.desktop.example failed desktop-file-validate:
+E           /home/runner/work/PDF_Pro/PDF_Pro/pdf-pro.desktop.example: hint: value "Office;Viewer;Graphics;" for key "Categories" in group "Desktop Entry" contains more than one main category; application might appear more than once in the application menu
+E           /home/runner/work/PDF_Pro/PDF_Pro/pdf-pro.desktop.example: error: filename does not have a .desktop extension
+
+tests/test_desktop_launch.py:45: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_desktop_launch.py::DesktopLaunchTests::test_desktop_file_validate_if_installed - AssertionError: 1 != 0 : pdf-pro.desktop.example failed desktop-file-validate:
+/home/runner/work/PDF_Pro/PDF_Pro/pdf-pro.desktop.example: hint: value "Office;Viewer;Graphics;" for key "Categories" in group "Desktop Entry" contains more than one main category; application might appear more than once in the application menu
+/home/runner/work/PDF_Pro/PDF_Pro/pdf-pro.desktop.example: error: filename does not have a .desktop extension
+1 failed, 63 passed, 2 skipped in 1.68s
