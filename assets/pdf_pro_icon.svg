@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1d4ed8"/>
+      <stop offset="1" stop-color="#1e3a8a"/>
+    </linearGradient>
+    <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e8edf7"/>
+    </linearGradient>
+    <clipPath id="rounded">
+      <rect x="16" y="16" width="480" height="480" rx="96"/>
+    </clipPath>
+  </defs>
+
+  <!-- App tile -->
+  <rect x="16" y="16" width="480" height="480" rx="96" fill="url(#bg)"/>
+
+  <!-- Document -->
+  <g clip-path="url(#rounded)">
+    <path d="M150 92 h150 l76 76 v252 a18 18 0 0 1 -18 18 H150 a18 18 0 0 1 -18 -18 V110 a18 18 0 0 1 18 -18 z"
+          fill="url(#page)"/>
+    <!-- Folded corner -->
+    <path d="M300 92 l76 76 h-64 a12 12 0 0 1 -12 -12 z" fill="#c7d2ea"/>
+    <!-- Text lines -->
+    <g stroke="#9fb0d0" stroke-width="14" stroke-linecap="round">
+      <line x1="168" y1="212" x2="340" y2="212"/>
+      <line x1="168" y1="252" x2="340" y2="252"/>
+      <line x1="168" y1="292" x2="288" y2="292"/>
+    </g>
+    <!-- Redacted / amended line -->
+    <rect x="168" y="322" width="172" height="26" rx="6" fill="#1e293b"/>
+    <!-- Signature squiggle -->
+    <path d="M172 396 c 14 -34 26 -34 34 -6 c 6 22 14 22 24 -8 c 8 -24 18 -22 24 2 c 5 18 14 18 26 -4 l 30 -2"
+          fill="none" stroke="#1d4ed8" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Pen -->
+    <g transform="rotate(38 350 330)">
+      <rect x="338" y="238" width="24" height="112" rx="10" fill="#f59e0b"/>
+      <path d="M338 350 h24 l-12 30 z" fill="#1e293b"/>
+      <rect x="338" y="238" width="24" height="18" rx="8" fill="#fbbf24"/>
+    </g>
+  </g>
+</svg>

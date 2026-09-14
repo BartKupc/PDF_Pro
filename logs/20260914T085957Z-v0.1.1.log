@@ -1,0 +1,160 @@
+....................F....F...............                                [100%]
+=================================== FAILURES ===================================
+_______________ PdfIntegrationTests.test_detect_signature_field ________________
+
+self = <tests.test_pdf_integration.PdfIntegrationTests testMethod=test_detect_signature_field>
+
+    def test_detect_signature_field(self):
+        from pdf_pro.document import detect_digital_signature, open_pdf
+    
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "signed.pdf"
+            doc = fitz.open()
+            page = doc.new_page()
+            page.insert_text((72, 72), "signed", fontsize=12)
+            # Insert a signature field if the API allows; otherwise a /Sig object via xml/json.
+            try:
+                widget = fitz.Widget()
+                widget.field_name = "Signature1"
+                widget.field_type = fitz.PDF_WIDGET_TYPE_SIGNATURE
+                widget.rect = fitz.Rect(72, 400, 200, 460)
+                page.add_widget(widget)
+            except Exception:
+                pass
+            doc.save(p.as_posix())
+            # Force a Sig dictionary into the file if widgets didn't stick
+            raw = p.read_bytes()
+            if b"/FT /Sig" not in raw and b"/Type /Sig" not in raw:
+                # append a dummy object comment is not enough; rewrite with xref injection
+                doc2 = fitz.open(p.as_posix())
+                # new dummy object
+                doc2._update_stream = getattr(doc2, "_update_stream", None)
+>               doc2.save(p.as_posix(), incremental=False)
+
+tests/test_pdf_integration.py:115: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = Document('/tmp/tmp4uri18yb/signed.pdf')
+filename = '/tmp/tmp4uri18yb/signed.pdf', garbage = 0, clean = 0, deflate = 0
+deflate_images = 0, deflate_fonts = 0, incremental = False, ascii = 0
+expand = 0, linear = 0, no_new_id = 0, appearance = 0, pretty = 0
+encryption = 1, permissions = 4095, owner_pw = None, user_pw = None
+preserve_metadata = 1, use_objstms = 0, compression_effort = 0
+raise_on_repair = False, reproducible = False
+
+    def save(
+            self,
+            filename,
+            garbage=0,
+            clean=0,
+            deflate=0,
+            deflate_images=0,
+            deflate_fonts=0,
+            incremental=0,
+            ascii=0,
+            expand=0,
+            linear=0,
+            no_new_id=0,
+            appearance=0,
+            pretty=0,
+            encryption=1,
+            permissions=4095,
+            owner_pw=None,
+            user_pw=None,
+            preserve_metadata=1,
+            use_objstms=0,
+            compression_effort=0,
+            raise_on_repair=False,
+            reproducible=False,
+            ):
+        # From %pythonprepend save
+        #
+        is_repaired_pre = self.is_repaired
+        """Save PDF to file, pathlib.Path or file pointer."""
+        if self.is_closed or self.is_encrypted:
+            raise ValueError("document closed or encrypted")
+        if type(filename) is str:
+            pass
+        elif hasattr(filename, "open"):  # assume: pathlib.Path
+            filename = str(filename)
+        elif hasattr(filename, "name"):  # assume: file object
+            filename = filename.name
+        elif not hasattr(filename, "seek"):  # assume file object
+            raise ValueError("filename must be str, Path or file object")
+        if filename == self.name and not incremental:
+>           raise ValueError("save to original must be incremental")
+E           ValueError: save to original must be incremental
+
+/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/pymupdf/__init__.py:6593: ValueError
+______________ PdfIntegrationTests.test_password_prompt_contract _______________
+
+self = <tests.test_pdf_integration.PdfIntegrationTests testMethod=test_password_prompt_contract>
+
+    def test_password_prompt_contract(self):
+        from pdf_pro.document import NeedsPassword, WrongPassword, open_pdf
+    
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "enc.pdf"
+            self._make_pdf(p)
+            doc = fitz.open(p.as_posix())
+>           doc.save(p.as_posix(), encryption=fitz.PDF_ENCRYPT_AES_256, user_pw="secret", owner_pw="owner")
+
+tests/test_pdf_integration.py:47: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = Document('/tmp/tmpvv5xs9e7/enc.pdf')
+filename = '/tmp/tmpvv5xs9e7/enc.pdf', garbage = 0, clean = 0, deflate = 0
+deflate_images = 0, deflate_fonts = 0, incremental = 0, ascii = 0, expand = 0
+linear = 0, no_new_id = 0, appearance = 0, pretty = 0, encryption = 5
+permissions = 4095, owner_pw = 'owner', user_pw = 'secret'
+preserve_metadata = 1, use_objstms = 0, compression_effort = 0
+raise_on_repair = False, reproducible = False
+
+    def save(
+            self,
+            filename,
+            garbage=0,
+            clean=0,
+            deflate=0,
+            deflate_images=0,
+            deflate_fonts=0,
+            incremental=0,
+            ascii=0,
+            expand=0,
+            linear=0,
+            no_new_id=0,
+            appearance=0,
+            pretty=0,
+            encryption=1,
+            permissions=4095,
+            owner_pw=None,
+            user_pw=None,
+            preserve_metadata=1,
+            use_objstms=0,
+            compression_effort=0,
+            raise_on_repair=False,
+            reproducible=False,
+            ):
+        # From %pythonprepend save
+        #
+        is_repaired_pre = self.is_repaired
+        """Save PDF to file, pathlib.Path or file pointer."""
+        if self.is_closed or self.is_encrypted:
+            raise ValueError("document closed or encrypted")
+        if type(filename) is str:
+            pass
+        elif hasattr(filename, "open"):  # assume: pathlib.Path
+            filename = str(filename)
+        elif hasattr(filename, "name"):  # assume: file object
+            filename = filename.name
+        elif not hasattr(filename, "seek"):  # assume file object
+            raise ValueError("filename must be str, Path or file object")
+        if filename == self.name and not incremental:
+>           raise ValueError("save to original must be incremental")
+E           ValueError: save to original must be incremental
+
+/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/pymupdf/__init__.py:6593: ValueError
+=========================== short test summary info ============================
+FAILED tests/test_pdf_integration.py::PdfIntegrationTests::test_detect_signature_field - ValueError: save to original must be incremental
+FAILED tests/test_pdf_integration.py::PdfIntegrationTests::test_password_prompt_contract - ValueError: save to original must be incremental
+2 failed, 39 passed in 2.08s

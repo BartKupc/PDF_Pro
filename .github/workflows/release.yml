@@ -1,0 +1,71 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1 fuse desktop-file-utils
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install -e .
+
+      - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          set -o pipefail
+          python -m pytest -q 2>&1 | tee pytest-ci.log
+
+      - name: Publish CI log on failure
+        if: failure()
+        run: |
+          git config user.name "ci-bot"
+          git config user.email "ci-bot@users.noreply.github.com"
+          git fetch origin ci-logs || true
+          git checkout -B ci-logs origin/ci-logs 2>/dev/null || git checkout --orphan ci-logs
+          mkdir -p logs
+          cp pytest-ci.log "logs/$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_REF_NAME}.log"
+          git add logs
+          git commit -m "CI log ${GITHUB_RUN_ID} (${GITHUB_REF_NAME})" || true
+          git push -u origin ci-logs
+          git checkout -
+
+      - name: PyInstaller
+        run: pyinstaller --noconfirm PDF_Pro.spec
+
+      - name: Package .deb and AppImage
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          export VERSION
+          chmod +x packaging/linux/build.sh
+          ./packaging/linux/build.sh
+
+      - name: Upload GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/packages/*.deb
+            dist/packages/*.AppImage
+            dist/packages/SHA256SUMS
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
