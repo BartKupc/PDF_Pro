@@ -68,7 +68,8 @@ full manual gate on Ubuntu.
 
 ## Install from GitHub Release (Bart publishes tags)
 
-`.deb` (Ubuntu/Debian):
+`.deb` (Ubuntu/Debian) — installs `/usr/bin/pdf-pro`, `/usr/share/applications/pdf-pro.desktop`,
+and hicolor icons so the app appears in the grid and is double-clickable:
 
 ```bash
 sudo apt install ./pdf-pro_<version>_amd64.deb
@@ -80,6 +81,21 @@ AppImage (no install):
 ```bash
 chmod +x PDF_Pro-<version>-x86_64.AppImage
 ./PDF_Pro-<version>-x86_64.AppImage
+```
+
+**GNOME Files “Allow Launching”.** On GNOME, a downloaded AppImage is often treated as
+untrusted, so double-click does nothing until you mark it executable:
+
+1. Right-click `PDF_Pro-*-x86_64.AppImage` in Files.
+2. Choose **Allow Launching** (or Properties → Permissions → “Allow executing as a program”).
+3. Double-click. AppImageLauncher, if installed, will also pick up the bundled `.desktop` + icon.
+
+To pin it in the app grid without installing the `.deb`, copy
+`pdf-pro.desktop.example` from this repo to `~/.local/share/applications/pdf-pro.desktop`
+and edit `Exec=` (absolute path to the AppImage) and `Icon=` if needed, then:
+
+```bash
+update-desktop-database ~/.local/share/applications
 ```
 
 Verify checksums against `SHA256SUMS` on the same release. There is no
@@ -99,7 +115,7 @@ ciphertext.
 ```bash
 pip install -r requirements-dev.txt
 pyinstaller --noconfirm PDF_Pro.spec
-VERSION=0.1.0 ./packaging/linux/build.sh
+VERSION=0.1.3 ./packaging/linux/build.sh
 ```
 
 Outputs: `dist/packages/pdf-pro_<ver>_amd64.deb`,

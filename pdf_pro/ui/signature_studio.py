@@ -26,6 +26,13 @@ from PySide6.QtWidgets import (
 
 from pdf_pro.constants import VISUAL_SIGNATURE_NOTICE
 from pdf_pro.fonts import HANDWRITING_FAMILY
+from pdf_pro.signature_feedback import (
+    MSG_SAVED,
+    StudioState,
+    validate_save_to_vault,
+    validate_unlock,
+    validate_use_on_page,
+)
 from pdf_pro.vault import SignatureAsset, SignatureVault, VaultError, WrongPassphrase
 
 
@@ -128,8 +135,8 @@ class SignatureStudio(QDialog):
         self.resize(560, 460)
         layout = QVBoxLayout(self)
         notice = QLabel(VISUAL_SIGNATURE_NOTICE)
+        notice.setObjectName("legalNotice")
         notice.setWordWrap(True)
-        notice.setStyleSheet("color:#6a3a00; background:#fff4d6; padding:8px;")
         layout.addWidget(notice)
 
         self.tabs = QTabWidget()
@@ -192,10 +199,16 @@ class SignatureStudio(QDialog):
         name_row.addWidget(self.save_name)
         layout.addLayout(name_row)
 
+        self.feedback = QLabel("")
+        self.feedback.setObjectName("feedbackLabel")
+        self.feedback.setWordWrap(True)
+        layout.addWidget(self.feedback)
+
         buttons = QHBoxLayout()
         save_btn = QPushButton("Save to vault")
         save_btn.clicked.connect(self._save_vault)
         use_btn = QPushButton("Use on page")
+        use_btn.setObjectName("primaryAction")
         use_btn.clicked.connect(self._use)
         cancel = QPushButton("Cancel")
         cancel.clicked.connect(self.reject)
@@ -236,7 +249,33 @@ class SignatureStudio(QDialog):
             item.setData(Qt.UserRole, a.id)
             self.vault_list.addItem(item)
 
+    def _studio_state(self) -> StudioState:
+        row = self.vault_list.currentItem()
+        return StudioState(
+            tab=self.tabs.currentIndex(),
+            pad_has_strokes=bool(self.pad.strokes),
+            typed_name=self.type_name.text(),
+            image_present=bool(self._upload_b64),
+            save_name=self.save_name.text(),
+            vault_unlocked=bool(self.vault.unlocked),
+            vault_selected=row is not None,
+            passphrase=self.pass_edit.text(),
+        )
+
+    def _show_feedback(self, msg: str, vault: bool = False, ok: bool = False) -> None:
+        self.feedback.setText(msg)
+        self.feedback.setObjectName("feedbackOk" if ok else "feedbackLabel")
+        self.feedback.style().unpolish(self.feedback)
+        self.feedback.style().polish(self.feedback)
+        if vault:
+            self.tabs.setCurrentIndex(3)
+            self.vault_status.setText(msg)
+
     def _unlock(self) -> None:
+        err = validate_unlock(self._studio_state())
+        if err:
+            self._show_feedback(err, vault=True)
+            return
         pw = self.pass_edit.text()
         try:
             if self.vault.is_first_use():
@@ -244,12 +283,13 @@ class SignatureStudio(QDialog):
             else:
                 self.vault.unlock(pw)
         except WrongPassphrase as exc:
-            self.vault_status.setText(str(exc))
+            self._show_feedback(str(exc), vault=True)
             return
         except VaultError as exc:
-            self.vault_status.setText(str(exc))
+            self._show_feedback(str(exc), vault=True)
             return
         self.pass_edit.clear()
+        self.feedback.setText("")
         self._refresh_vault_status()
 
     def _current_asset(self) -> SignatureAsset | None:
@@ -303,19 +343,32 @@ class SignatureStudio(QDialog):
         return base64.b64encode(buf.getvalue()).decode("ascii")
 
     def _save_vault(self) -> None:
-        if not self.vault.unlocked:
-            self.vault_status.setText("Unlock the vault before saving.")
-            self.tabs.setCurrentIndex(3)
+        state = self._studio_state()
+        err = validate_save_to_vault(state)
+        if err:
+            self._show_feedback(err, vault=not state.vault_unlocked)
             return
         asset = self._current_asset()
         if not asset:
+            self._show_feedback("Nothing to save.")
             return
-        self.vault.add(asset)
+        try:
+            self.vault.add(asset)
+        except VaultError as exc:
+            self._show_feedback(str(exc), vault=True)
+            return
         self._fill_list()
+        self._show_feedback(MSG_SAVED, ok=True)
 
     def _use(self) -> None:
+        state = self._studio_state()
+        err = validate_use_on_page(state)
+        if err:
+            self._show_feedback(err, vault=state.tab == 3)
+            return
         asset = self._current_asset()
         if not asset:
+            self._show_feedback("Nothing to place on the page.")
             return
         self.result_asset = asset
         self.accept()

@@ -49,18 +49,18 @@ from pdf_pro.document import (
     open_pdf,
     verify_source_untouched,
 )
-from pdf_pro.export import ExportError, default_export_path, export_pdf
-from pdf_pro.fonts import BUNDLED_FAMILIES, HANDWRITING_FAMILY, font_path
+from pdf_pro.export import ExportError, assert_export_destination, default_export_path, export_pdf
+from pdf_pro.fonts import BUNDLED_FAMILIES, font_path
 from pdf_pro.overlay import (
     OverlayDocument,
     make_cover_replace,
     make_image,
-    make_signature,
     make_text,
     make_whiteout,
 )
 from pdf_pro.paths import icon_path
 from pdf_pro.render_kind import KIND_PAGE, KIND_THUMB, destination
+from pdf_pro.signature_feedback import place_signature_on_page
 from pdf_pro.undo import UndoStack
 from pdf_pro.ui.canvas import PageCanvas
 from pdf_pro.ui.preview import PreviewDialog
@@ -115,17 +115,17 @@ class MainWindow(QMainWindow):
         split.setStretchFactor(1, 1)
 
         self.banner = QLabel("")
+        self.banner.setObjectName("warningBanner")
         self.banner.setWordWrap(True)
-        self.banner.setStyleSheet("background:#fff4d6; padding:6px;")
         self.banner.hide()
 
         self.sig_notice = QLabel(VISUAL_SIGNATURE_NOTICE)
+        self.sig_notice.setObjectName("legalNotice")
         self.sig_notice.setWordWrap(True)
-        self.sig_notice.setStyleSheet("color:#444; padding:4px;")
 
         self.cover_notice = QLabel(COVER_NOT_REDACTION)
+        self.cover_notice.setObjectName("legalNotice")
         self.cover_notice.setWordWrap(True)
-        self.cover_notice.setStyleSheet("color:#6a3a00; padding:4px;")
 
         central = QWidget()
         v = QVBoxLayout(central)
@@ -198,7 +198,15 @@ class MainWindow(QMainWindow):
         act("Fit page", self.fit_page)
         act("Rotate view", self.rotate_view)
         tb.addSeparator()
-        act("Preview / Export", self.export_flow, "Ctrl+E")
+        self.export_btn = QPushButton("Preview / Export")
+        self.export_btn.setObjectName("primaryAction")
+        self.export_btn.setMinimumHeight(36)
+        self.export_btn.clicked.connect(self.export_flow)
+        tb.addWidget(self.export_btn)
+        export_act = QAction("Preview / Export", self)
+        export_act.setShortcut(QKeySequence("Ctrl+E"))
+        export_act.triggered.connect(self.export_flow)
+        self.addAction(export_act)
         del_act = QAction("Delete", self)
         del_act.setShortcut(QKeySequence.Delete)
         del_act.triggered.connect(self.delete_selected)
@@ -422,26 +430,13 @@ class MainWindow(QMainWindow):
             return
         asset = dlg.result_asset
         pw, ph = self.opened.page_size(self.current_page)
-        width = min(180, pw * 0.35)
-        height = width * 0.35
         self.history.checkpoint()
-        self.overlay.add(
-            make_signature(
-                self.current_page,
-                72,
-                ph - 100,
-                width,
-                height,
-                kind=asset.kind,
-                png_b64=asset.png_b64,
-                strokes=asset.strokes,
-                text=asset.text,
-                font_family=asset.font_family or HANDWRITING_FAMILY,
-                vault_id=asset.id,
-            )
-        )
+        place_signature_on_page(self.overlay, asset, self.current_page, pw, ph)
+        self.canvas.page_index = self.current_page
         self.canvas.bind_overlay(self.overlay)
+        self.canvas.viewport().update()
         self._after_change()
+        self._status("Signature placed on this page.")
 
     def delete_selected(self) -> None:
         item = self.canvas.selected_item()
@@ -489,7 +484,11 @@ class MainWindow(QMainWindow):
         if not self.opened:
             QMessageBox.information(self, APP_NAME, "Open a PDF first.")
             return
-        preview = PreviewDialog(self.opened.path, self.overlay, self.opened.password, self)
+        try:
+            preview = PreviewDialog(self.opened.path, self.overlay, self.opened.password, self)
+        except Exception as exc:
+            QMessageBox.critical(self, APP_NAME, f"Could not start preview.\nReason: {exc}")
+            return
         if preview.exec() != preview.Accepted or not preview.ok:
             return
         dest_default = default_export_path(self.opened.path, self.overlay)
@@ -500,14 +499,20 @@ class MainWindow(QMainWindow):
             return
         dest = Path(dest_str)
         try:
-            if dest.resolve() == self.opened.path.resolve():
-                raise ExportError("Refusing to overwrite the source PDF")
+            dest = assert_export_destination(self.opened.path, dest)
             export_pdf(self.opened.path, self.overlay, dest, password=self.opened.password)
         except ExportError as exc:
             QMessageBox.critical(self, APP_NAME, str(exc))
             return
         except OSError as exc:
-            QMessageBox.critical(self, APP_NAME, f"Could not write export: {exc}")
+            QMessageBox.critical(
+                self, APP_NAME, f"Could not write export.\nReason: {exc}\nPath: {dest}"
+            )
+            return
+        except Exception as exc:
+            QMessageBox.critical(
+                self, APP_NAME, f"Export failed.\nReason: {exc}\nPath: {dest}"
+            )
             return
         if not verify_source_untouched(self.opened.path, self.opened.sha256):
             QMessageBox.critical(self, APP_NAME, "Source checksum changed — export may be unsafe.")

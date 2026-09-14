@@ -1,3 +1,6 @@
+# Copy to ~/.local/share/applications/pdf-pro.desktop and set Exec=
+# to the absolute path of PDF_Pro-*-x86_64.AppImage if you are not
+# using the .deb. Then run: update-desktop-database ~/.local/share/applications
 [Desktop Entry]
 Version=1.0
 Type=Application

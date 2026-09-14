@@ -18,10 +18,13 @@ def main(argv: list[str] | None = None) -> int:
 
     QCoreApplication.setApplicationName(APP_NAME)
     QCoreApplication.setOrganizationName(ORG_NAME)
-    QCoreApplication.setApplicationVersion("0.1.0")
+    QCoreApplication.setApplicationVersion("0.1.3")
     QCoreApplication.setOrganizationDomain(APP_ID)
 
     app = QApplication(argv)
+    from pdf_pro.ui.theme import apply_theme
+
+    apply_theme(app)
     from pdf_pro.paths import icon_path
 
     ic = icon_path(256)

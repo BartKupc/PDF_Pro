@@ -1,4 +1,4 @@
-"""Pre-export flattened preview."""
+"""Pre-export flattened preview. Footer buttons stay visible on short screens."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -23,28 +24,50 @@ from pdf_pro.export import ExportError, export_pdf
 class PreviewDialog(QDialog):
     def __init__(self, source: Path, overlay, password: str | None, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Pre-export preview — flattened result")
-        self.resize(720, 820)
         self.ok = False
+        self._setup_ui()
+        self._build(source, overlay, password)
+
+    def _setup_ui(self) -> None:
+        self.setWindowTitle("Pre-export preview — flattened result")
+        self.setMinimumSize(560, 480)
+        self.resize(700, 620)
+        self.setSizeGripEnabled(True)
+
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("This is the flattened export. Original file is not changed."))
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
+
+        hint = QLabel("This is the flattened export. Original file is not changed.")
+        hint.setObjectName("mutedLabel")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+
         self.status = QLabel("Rendering preview…")
+        self.status.setWordWrap(True)
         layout.addWidget(self.status)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
+
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         holder = QWidget()
         self.holder_layout = QVBoxLayout(holder)
-        scroll.setWidget(holder)
-        layout.addWidget(scroll)
-        buttons = QHBoxLayout()
-        export_btn = QPushButton("Looks good — choose export location")
-        export_btn.clicked.connect(self._accept)
+        self.scroll.setWidget(holder)
+        layout.addWidget(self.scroll, 1)
+
+        self.footer = QWidget()
+        buttons = QHBoxLayout(self.footer)
+        buttons.setContentsMargins(0, 8, 0, 0)
+        self.export_btn = QPushButton("Looks good — choose export location")
+        self.export_btn.setObjectName("primaryAction")
+        self.export_btn.setMinimumHeight(36)
+        self.export_btn.clicked.connect(self._accept)
         cancel = QPushButton("Back")
+        cancel.setMinimumHeight(36)
         cancel.clicked.connect(self.reject)
-        buttons.addWidget(export_btn)
+        buttons.addWidget(self.export_btn, 1)
         buttons.addWidget(cancel)
-        layout.addLayout(buttons)
-        self._build(source, overlay, password)
+        layout.addWidget(self.footer, 0)
 
     def _build(self, source, overlay, password) -> None:
         try:
@@ -59,7 +82,9 @@ class PreviewDialog(QDialog):
                         pix = page.get_pixmap(matrix=fitz.Matrix(1.2, 1.2), alpha=False)
                         from PySide6.QtGui import QImage
 
-                        img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format_RGB888).copy()
+                        img = QImage(
+                            pix.samples, pix.width, pix.height, pix.stride, QImage.Format_RGB888
+                        ).copy()
                         lab = QLabel()
                         lab.setPixmap(QPixmap.fromImage(img))
                         lab.setAlignment(Qt.AlignCenter)
@@ -68,10 +93,13 @@ class PreviewDialog(QDialog):
                 finally:
                     doc.close()
             self.status.setText("Preview of the flattened file.")
+            self.export_btn.setEnabled(True)
         except ExportError as exc:
             self.status.setText(f"Preview failed: {exc}")
+            self.export_btn.setEnabled(False)
         except Exception as exc:
             self.status.setText(f"Preview failed: {exc}")
+            self.export_btn.setEnabled(False)
 
     def _accept(self) -> None:
         self.ok = True

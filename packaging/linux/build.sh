@@ -5,7 +5,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
-VERSION="${VERSION:-0.1.0}"
+VERSION="${VERSION:-0.1.3}"
 ARCH="${ARCH:-amd64}"
 DIST="$ROOT/dist"
 ONEDIR="$DIST/PDF_Pro"
@@ -28,6 +28,7 @@ mkdir -p "$DEB_ROOT/opt/pdf-pro" \
          "$DEB_ROOT/usr/share/icons/hicolor/64x64/apps" \
          "$DEB_ROOT/usr/share/icons/hicolor/48x48/apps" \
          "$DEB_ROOT/usr/share/icons/hicolor/32x32/apps" \
+         "$DEB_ROOT/usr/share/icons/hicolor/512x512/apps" \
          "$DEB_ROOT/usr/share/doc/pdf-pro" \
          "$DEB_ROOT/DEBIAN"
 
@@ -45,6 +46,8 @@ install -m 644 "$ROOT/assets/pdf_pro_icon_128.png" "$DEB_ROOT/usr/share/icons/hi
 install -m 644 "$ROOT/assets/pdf_pro_icon_64.png" "$DEB_ROOT/usr/share/icons/hicolor/64x64/apps/pdf-pro.png"
 install -m 644 "$ROOT/assets/pdf_pro_icon_48.png" "$DEB_ROOT/usr/share/icons/hicolor/48x48/apps/pdf-pro.png"
 install -m 644 "$ROOT/assets/pdf_pro_icon_32.png" "$DEB_ROOT/usr/share/icons/hicolor/32x32/apps/pdf-pro.png"
+install -m 644 "$ROOT/assets/pdf_pro_icon_512.png" "$DEB_ROOT/usr/share/icons/hicolor/512x512/apps/pdf-pro.png"
+desktop-file-validate "$DEB_ROOT/usr/share/applications/pdf-pro.desktop"
 cp "$ROOT/LICENSE" "$DEB_ROOT/usr/share/doc/pdf-pro/copyright"
 cp "$ROOT/README.md" "$DEB_ROOT/usr/share/doc/pdf-pro/"
 
@@ -65,6 +68,18 @@ Description: Local-first PDF amend-and-sign desktop app
  flattened new file. The source PDF is never overwritten.
 CTRL
 chmod 755 "$DEB_ROOT/usr/bin/pdf-pro"
+cat > "$DEB_ROOT/DEBIAN/postinst" <<'POST'
+#!/bin/sh
+set -e
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database -q /usr/share/applications || true
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+  gtk-update-icon-cache -q /usr/share/icons/hicolor || true
+fi
+exit 0
+POST
+chmod 755 "$DEB_ROOT/DEBIAN/postinst"
 dpkg-deb --root-owner-group --build "$DEB_ROOT" "$OUT/pdf-pro_${VERSION}_${ARCH}.deb"
 
 # --- AppImage ---
@@ -84,6 +99,7 @@ sed -i 's|^Exec=.*|Exec=PDF_Pro %f|; s|^Icon=.*|Icon=pdf-pro|' "$APPDIR/pdf-pro.
 cp "$APPDIR/pdf-pro.desktop" "$APPDIR/usr/share/applications/pdf-pro.desktop"
 cp "$ROOT/assets/pdf_pro_icon_256.png" "$APPDIR/pdf-pro.png"
 cp "$ROOT/assets/pdf_pro_icon_256.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/pdf-pro.png"
+PATH="$APPDIR/usr/bin:$PATH" desktop-file-validate "$APPDIR/pdf-pro.desktop"
 
 TOOL="${APPIMAGETOOL:-$OUT/appimagetool}"
 if [[ ! -x "$TOOL" ]]; then

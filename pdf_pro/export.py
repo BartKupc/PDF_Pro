@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import io
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -15,6 +16,24 @@ from pdf_pro.page_coords import overlay_point, overlay_rect
 
 class ExportError(Exception):
     pass
+
+
+def assert_export_destination(source: Path, dest: Path) -> Path:
+    """Preflight an export path. Always raises ExportError with reason + path."""
+    source = Path(source)
+    dest = Path(dest)
+    try:
+        same = dest.resolve() == source.resolve()
+    except OSError:
+        same = dest.expanduser().absolute() == source.expanduser().absolute()
+    if same:
+        raise ExportError(f"Refusing to overwrite the source PDF.\nPath: {dest}")
+    parent = dest.parent
+    if not parent.exists():
+        raise ExportError(f"Export folder does not exist.\nPath: {parent}")
+    if not os.access(parent, os.W_OK):
+        raise ExportError(f"Cannot write export — folder is not writable.\nPath: {parent}")
+    return dest
 
 
 def default_export_path(source: Path, overlay: OverlayDocument) -> Path:
