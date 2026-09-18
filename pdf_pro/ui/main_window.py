@@ -8,8 +8,10 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QSize, Slot
 from PySide6.QtGui import QAction, QFontDatabase, QIcon, QKeySequence, QPixmap, QImage, QColor
 from PySide6.QtWidgets import (
+    QCheckBox,
     QColorDialog,
     QComboBox,
+    QDialog,
     QInputDialog,
     QLabel,
     QListWidget,
@@ -22,7 +24,6 @@ from PySide6.QtWidgets import (
     QStatusBar,
     QVBoxLayout,
     QWidget,
-    QCheckBox,
 )
 
 from pdf_pro.constants import (
@@ -444,7 +445,7 @@ class MainWindow(QMainWindow):
 
     def _signature(self, tab: int = 0) -> None:
         dlg = SignatureStudio(self.vault, self, initial_tab=tab)
-        if dlg.exec() != dlg.Accepted or not dlg.result_asset:
+        if dlg.exec() != QDialog.DialogCode.Accepted or not dlg.result_asset:
             self._refresh_initials_button()
             return
         if not self.opened:
@@ -538,7 +539,7 @@ class MainWindow(QMainWindow):
             except Exception as exc:
                 QMessageBox.critical(self, APP_NAME, f"Could not start preview.\nReason: {exc}")
                 return
-            if preview.exec() != preview.Accepted or not preview.ok:
+            if preview.exec() != QDialog.DialogCode.Accepted or not preview.ok:
                 return
             dest_default = default_export_path(self.opened.path, self.overlay)
             dest_str, _ = get_save_file_name(

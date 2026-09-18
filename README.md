@@ -57,14 +57,11 @@ python -m unittest discover -s tests -v
 pytest -q
 ```
 
-Headless UI smoke (optional, needs PySide6):
+Headless UI tests (CI sets `QT_QPA_PLATFORM=offscreen`; skip when PySide6/PyMuPDF are missing):
 
 ```bash
-QT_QPA_PLATFORM=offscreen python -c "from pdf_pro.app import main"
+QT_QPA_PLATFORM=offscreen python -m unittest tests.test_preview_accept tests.test_qt_instance_enums -v
 ```
-
-Do not expect that one-liner to return; it starts the GUI. QA (T1.10) runs the
-full manual gate on Ubuntu.
 
 ## Install from GitHub Release (Bart publishes tags)
 
@@ -115,7 +112,7 @@ ciphertext.
 ```bash
 pip install -r requirements-dev.txt
 pyinstaller --noconfirm PDF_Pro.spec
-VERSION=0.1.4 ./packaging/linux/build.sh
+VERSION=0.1.5 ./packaging/linux/build.sh
 ```
 
 Outputs: `dist/packages/pdf-pro_<ver>_amd64.deb`,
