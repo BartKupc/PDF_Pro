@@ -9,7 +9,6 @@ from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen, QPixmap, QTabletEvent
 from PySide6.QtWidgets import (
     QDialog,
-    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -127,7 +126,7 @@ class DrawPad(QWidget):
 
 
 class SignatureStudio(QDialog):
-    def __init__(self, vault: SignatureVault, parent=None) -> None:
+    def __init__(self, vault: SignatureVault, parent=None, initial_tab: int = 0) -> None:
         super().__init__(parent)
         self.vault = vault
         self.result_asset: SignatureAsset | None = None
@@ -191,6 +190,8 @@ class SignatureStudio(QDialog):
         vl.addWidget(self.vault_list)
         self.tabs.addTab(vault_tab, "Vault")
         self._refresh_vault_status()
+        if 0 <= initial_tab < self.tabs.count():
+            self.tabs.setCurrentIndex(initial_tab)
 
         layout.addWidget(self.tabs)
         name_row = QHBoxLayout()
@@ -218,7 +219,9 @@ class SignatureStudio(QDialog):
         layout.addLayout(buttons)
 
     def _pick_image(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Signature image", "", "Images (*.png *.jpg *.jpeg)")
+        from pdf_pro.ui.file_dialogs import get_open_file_name
+
+        path, _ = get_open_file_name(self, "Signature image", "", "Images (*.png *.jpg *.jpeg)")
         if not path:
             return
         pix = QPixmap(path)

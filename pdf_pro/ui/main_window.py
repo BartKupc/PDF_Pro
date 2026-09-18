@@ -8,11 +8,8 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QSize, Slot
 from PySide6.QtGui import QAction, QFontDatabase, QIcon, QKeySequence, QPixmap, QImage, QColor
 from PySide6.QtWidgets import (
-    QApplication,
     QColorDialog,
     QComboBox,
-    QFileDialog,
-    QHBoxLayout,
     QInputDialog,
     QLabel,
     QListWidget,
@@ -23,7 +20,6 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QSplitter,
     QStatusBar,
-    QToolBar,
     QVBoxLayout,
     QWidget,
     QCheckBox,
@@ -45,12 +41,13 @@ from pdf_pro.document import (
     PdfError,
     UnsupportedPdf,
     WrongPassword,
-    file_sha256,
     open_pdf,
     verify_source_untouched,
 )
-from pdf_pro.export import ExportError, assert_export_destination, default_export_path, export_pdf
+from pdf_pro.export import ExportError, default_export_path
+from pdf_pro.export_session import complete_export, open_containing_folder
 from pdf_pro.fonts import BUNDLED_FAMILIES, font_path
+from pdf_pro.ribbon_spec import ACTIONS, SHORTCUTS
 from pdf_pro.overlay import (
     OverlayDocument,
     make_cover_replace,
@@ -60,11 +57,13 @@ from pdf_pro.overlay import (
 )
 from pdf_pro.paths import icon_path
 from pdf_pro.render_kind import KIND_PAGE, KIND_THUMB, destination
-from pdf_pro.signature_feedback import place_signature_on_page
+from pdf_pro.signature_feedback import find_initials_asset, place_signature_on_page
 from pdf_pro.undo import UndoStack
 from pdf_pro.ui.canvas import PageCanvas
+from pdf_pro.ui.file_dialogs import get_open_file_name, get_save_file_name
 from pdf_pro.ui.preview import PreviewDialog
 from pdf_pro.ui.render_thread import RenderEngine, RenderThread
+from pdf_pro.ui.ribbon import RibbonBar
 from pdf_pro.ui.signature_studio import SignatureStudio
 from pdf_pro.vault import SignatureVault
 
@@ -129,13 +128,16 @@ class MainWindow(QMainWindow):
 
         central = QWidget()
         v = QVBoxLayout(central)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(0)
+        self._build_ribbon()
+        v.addWidget(self.ribbon)
         v.addWidget(self.banner)
         v.addWidget(split, 1)
         v.addWidget(self.cover_notice)
         v.addWidget(self.sig_notice)
         self.setCentralWidget(central)
 
-        self._build_toolbar()
         self.setStatusBar(QStatusBar())
         self._status("Open a PDF to begin. The source file is never overwritten.")
 
@@ -147,70 +149,89 @@ class MainWindow(QMainWindow):
 
         self.setAcceptDrops(True)
 
-    def _build_toolbar(self) -> None:
-        tb = QToolBar("Main")
-        tb.setMovable(False)
-        self.addToolBar(tb)
-
-        def act(name, slot, shortcut=None):
-            a = QAction(name, self)
-            a.triggered.connect(slot)
-            if shortcut:
-                a.setShortcut(QKeySequence(shortcut))
-            tb.addAction(a)
-            return a
-
-        act("Open", self.open_dialog, "Ctrl+O")
-        tb.addSeparator()
-        act("Select", lambda: self.canvas.set_tool("select"))
-        act("Add text", lambda: self.canvas.set_tool("text"))
-        act("White-out", lambda: self.canvas.set_tool("whiteout"))
-        act("Cover and replace", lambda: self.canvas.set_tool("cover"))
-        act("Insert image", self._insert_image)
-        act("Signature", self._signature)
-        tb.addSeparator()
+    def _build_ribbon(self) -> None:
+        self._color = "#000000"
+        self.page_label = QLabel("—")
         self.font_box = QComboBox()
         self.font_box.addItems(BUNDLED_FAMILIES)
-        tb.addWidget(QLabel(" Font "))
-        tb.addWidget(self.font_box)
+        self.font_box.setMaximumWidth(140)
         self.size_box = QSpinBox()
         self.size_box.setRange(6, 96)
         self.size_box.setValue(12)
-        tb.addWidget(self.size_box)
+        self.size_box.setMaximumWidth(70)
         self.bold_box = QCheckBox("Bold")
-        tb.addWidget(self.bold_box)
         self.color_btn = QPushButton("Colour")
-        self._color = "#000000"
         self.color_btn.clicked.connect(self._pick_color)
-        tb.addWidget(self.color_btn)
-        tb.addSeparator()
-        act("Undo", self.undo, "Ctrl+Z")
-        act("Redo", self.redo, "Ctrl+Shift+Z")
-        tb.addSeparator()
-        act("Prev", lambda: self.goto_page(self.current_page - 1))
-        act("Next", lambda: self.goto_page(self.current_page + 1))
-        self.page_label = QLabel("—")
-        tb.addWidget(self.page_label)
-        tb.addSeparator()
-        act("Zoom +", lambda: self.set_zoom(self.zoom * 1.25), "Ctrl+=")
-        act("Zoom −", lambda: self.set_zoom(self.zoom / 1.25), "Ctrl+-")
-        act("Fit width", self.fit_width)
-        act("Fit page", self.fit_page)
-        act("Rotate view", self.rotate_view)
-        tb.addSeparator()
-        self.export_btn = QPushButton("Preview / Export")
-        self.export_btn.setObjectName("primaryAction")
-        self.export_btn.setMinimumHeight(36)
-        self.export_btn.clicked.connect(self.export_flow)
-        tb.addWidget(self.export_btn)
-        export_act = QAction("Preview / Export", self)
-        export_act.setShortcut(QKeySequence("Ctrl+E"))
-        export_act.triggered.connect(self.export_flow)
-        self.addAction(export_act)
-        del_act = QAction("Delete", self)
-        del_act.setShortcut(QKeySequence.Delete)
-        del_act.triggered.connect(self.delete_selected)
-        self.addAction(del_act)
+        extras = {
+            "page_label": self.page_label,
+            "font": self.font_box,
+            "size": self.size_box,
+            "bold": self.bold_box,
+            "colour": self.color_btn,
+        }
+        self.ribbon = RibbonBar()
+        self.ribbon.populate(ACTIONS, extras)
+        self._bind_ribbon()
+        self._install_shortcuts()
+        self.ribbon.currentChanged.connect(lambda *_: self._refresh_initials_button())
+        self._refresh_initials_button()
+
+    def _bind_ribbon(self) -> None:
+        w = self.ribbon.widgets
+
+        def on(aid, slot):
+            w[aid].clicked.connect(lambda *_a, s=slot: s())
+
+        on("open", self.open_dialog)
+        on("select", lambda: self.canvas.set_tool("select"))
+        on("add_text", lambda: self.canvas.set_tool("text"))
+        on("whiteout", lambda: self.canvas.set_tool("whiteout"))
+        on("cover_replace", lambda: self.canvas.set_tool("cover"))
+        on("insert_image", self._insert_image)
+        on("undo", self.undo)
+        on("redo", self.redo)
+        on("prev", lambda: self.goto_page(self.current_page - 1))
+        on("next", lambda: self.goto_page(self.current_page + 1))
+        on("zoom_in", lambda: self.set_zoom(self.zoom * 1.25))
+        on("zoom_out", lambda: self.set_zoom(self.zoom / 1.25))
+        on("fit_width", self.fit_width)
+        on("fit_page", self.fit_page)
+        on("rotate_view", self.rotate_view)
+        on("draw_signature", lambda: self._signature(0))
+        on("type_signature", lambda: self._signature(1))
+        on("upload_signature", lambda: self._signature(2))
+        on("vault", lambda: self._signature(3))
+        on("place_initials", self._place_initials)
+        on("preview_export", self.export_flow)
+        self.export_btn = w["preview_export"]
+
+    def _install_shortcuts(self) -> None:
+        slots = {
+            "open": self.open_dialog,
+            "undo": self.undo,
+            "redo": self.redo,
+            "zoom_in": lambda: self.set_zoom(self.zoom * 1.25),
+            "zoom_out": lambda: self.set_zoom(self.zoom / 1.25),
+            "preview_export": self.export_flow,
+            "delete": self.delete_selected,
+        }
+        for aid, slot in slots.items():
+            seq = SHORTCUTS[aid]
+            action = QAction(aid, self)
+            if seq == "Delete":
+                action.setShortcut(QKeySequence.Delete)
+            else:
+                action.setShortcut(QKeySequence(seq))
+            action.triggered.connect(lambda *_a, s=slot: s())
+            self.addAction(action)
+
+    def _refresh_initials_button(self) -> None:
+        btn = self.ribbon.widgets.get("place_initials")
+        if btn is None:
+            return
+        present = find_initials_asset(self.vault) is not None
+        btn.setVisible(present)
+        btn.setEnabled(present)
 
     def _pick_color(self) -> None:
         c = QColorDialog.getColor(QColor(self._color), self)
@@ -264,7 +285,7 @@ class MainWindow(QMainWindow):
         self.banner.hide()
 
     def open_dialog(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Open PDF", "", "PDF files (*.pdf)")
+        path, _ = get_open_file_name(self, "Open PDF", "", "PDF files (*.pdf)")
         if path:
             self.open_path(Path(path))
 
@@ -398,7 +419,7 @@ class MainWindow(QMainWindow):
         self._after_change()
 
     def _insert_image(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Insert image", "", "Images (*.png *.jpg *.jpeg)")
+        path, _ = get_open_file_name(self, "Insert image", "", "Images (*.png *.jpg *.jpeg)")
         if not path or not self.opened:
             return
         pix = QPixmap(path)
@@ -421,12 +442,14 @@ class MainWindow(QMainWindow):
         self.canvas.bind_overlay(self.overlay)
         self._after_change()
 
-    def _signature(self) -> None:
-        dlg = SignatureStudio(self.vault, self)
+    def _signature(self, tab: int = 0) -> None:
+        dlg = SignatureStudio(self.vault, self, initial_tab=tab)
         if dlg.exec() != dlg.Accepted or not dlg.result_asset:
+            self._refresh_initials_button()
             return
         if not self.opened:
             QMessageBox.information(self, APP_NAME, "Open a PDF first, then place the signature.")
+            self._refresh_initials_button()
             return
         asset = dlg.result_asset
         pw, ph = self.opened.page_size(self.current_page)
@@ -437,6 +460,28 @@ class MainWindow(QMainWindow):
         self.canvas.viewport().update()
         self._after_change()
         self._status("Signature placed on this page.")
+        self._refresh_initials_button()
+
+    def _place_initials(self) -> None:
+        asset = find_initials_asset(self.vault)
+        if not asset:
+            QMessageBox.information(
+                self,
+                APP_NAME,
+                "No initials in the vault. Unlock the vault and save initials first.",
+            )
+            return
+        if not self.opened:
+            QMessageBox.information(self, APP_NAME, "Open a PDF first, then place initials.")
+            return
+        pw, ph = self.opened.page_size(self.current_page)
+        self.history.checkpoint()
+        place_signature_on_page(self.overlay, asset, self.current_page, pw, ph)
+        self.canvas.page_index = self.current_page
+        self.canvas.bind_overlay(self.overlay)
+        self.canvas.viewport().update()
+        self._after_change()
+        self._status("Initials placed on this page.")
 
     def delete_selected(self) -> None:
         item = self.canvas.selected_item()
@@ -481,43 +526,56 @@ class MainWindow(QMainWindow):
         self._status(f"{n} overlay(s). Source stays read-only.{extra}")
 
     def export_flow(self) -> None:
-        if not self.opened:
-            QMessageBox.information(self, APP_NAME, "Open a PDF first.")
-            return
+        folder_to_open = None
         try:
-            preview = PreviewDialog(self.opened.path, self.overlay, self.opened.password, self)
-        except Exception as exc:
-            QMessageBox.critical(self, APP_NAME, f"Could not start preview.\nReason: {exc}")
-            return
-        if preview.exec() != preview.Accepted or not preview.ok:
-            return
-        dest_default = default_export_path(self.opened.path, self.overlay)
-        dest_str, _ = QFileDialog.getSaveFileName(
-            self, "Export flattened PDF", str(dest_default), "PDF files (*.pdf)"
-        )
-        if not dest_str:
-            return
-        dest = Path(dest_str)
-        try:
-            dest = assert_export_destination(self.opened.path, dest)
-            export_pdf(self.opened.path, self.overlay, dest, password=self.opened.password)
+            if not self.opened:
+                QMessageBox.information(self, APP_NAME, "Open a PDF first.")
+                return
+            try:
+                preview = PreviewDialog(
+                    self.opened.path, self.overlay, self.opened.password, self
+                )
+            except Exception as exc:
+                QMessageBox.critical(self, APP_NAME, f"Could not start preview.\nReason: {exc}")
+                return
+            if preview.exec() != preview.Accepted or not preview.ok:
+                return
+            dest_default = default_export_path(self.opened.path, self.overlay)
+            dest_str, _ = get_save_file_name(
+                self, "Export flattened PDF", str(dest_default), "PDF files (*.pdf)"
+            )
+            dest = Path(dest_str) if dest_str else None
+            result = complete_export(
+                self.opened.path,
+                self.overlay,
+                dest,
+                password=self.opened.password,
+                source_sha=self.opened.sha256,
+            )
+            if result.cancelled:
+                return
+            box = QMessageBox(self)
+            box.setWindowTitle(APP_NAME)
+            box.setText(result.message)
+            open_btn = box.addButton("Open containing folder", QMessageBox.ActionRole)
+            box.addButton(QMessageBox.Ok)
+            box.exec()
+            if box.clickedButton() is open_btn and result.path is not None:
+                folder_to_open = result.path
         except ExportError as exc:
             QMessageBox.critical(self, APP_NAME, str(exc))
             return
         except OSError as exc:
-            QMessageBox.critical(
-                self, APP_NAME, f"Could not write export.\nReason: {exc}\nPath: {dest}"
-            )
+            QMessageBox.critical(self, APP_NAME, f"Could not write export.\nReason: {exc}")
             return
         except Exception as exc:
-            QMessageBox.critical(
-                self, APP_NAME, f"Export failed.\nReason: {exc}\nPath: {dest}"
-            )
+            QMessageBox.critical(self, APP_NAME, f"Export failed.\nReason: {exc}")
             return
-        if not verify_source_untouched(self.opened.path, self.opened.sha256):
-            QMessageBox.critical(self, APP_NAME, "Source checksum changed — export may be unsafe.")
-            return
-        QMessageBox.information(self, APP_NAME, f"Exported to {dest}\nSource file is unchanged.")
+        if folder_to_open is not None:
+            try:
+                open_containing_folder(folder_to_open)
+            except OSError:
+                pass
 
 
 def QLineEditEcho():

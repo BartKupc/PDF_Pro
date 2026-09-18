@@ -154,6 +154,75 @@ QTabBar::tab:selected {{
 QTabBar::tab:hover {{
     color: {TEXT};
 }}
+QTabWidget#ribbon {{
+    background-color: {SURFACE};
+    max-height: 110px;
+    min-height: 90px;
+}}
+QTabWidget#ribbon::pane {{
+    background-color: {SURFACE};
+    border: none;
+    border-bottom: 1px solid {BORDER};
+}}
+QTabWidget#ribbon QTabBar::tab {{
+    background-color: {BG};
+    color: {MUTED};
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 6px 14px;
+    min-height: 24px;
+    font-size: 12px;
+}}
+QTabWidget#ribbon QTabBar::tab:selected {{
+    background-color: {SURFACE};
+    color: {TEXT};
+    border-bottom: 2px solid {ACCENT};
+}}
+QFrame#ribbonGroup {{
+    background-color: transparent;
+    border: none;
+}}
+QLabel#ribbonGroupLabel {{
+    color: {MUTED};
+    font-size: 10px;
+    padding: 0;
+}}
+QFrame#ribbonSeparator {{
+    background-color: {BORDER};
+    max-width: 1px;
+}}
+QTabWidget#ribbon QToolButton {{
+    background-color: transparent;
+    color: {TEXT};
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 4px 8px;
+    min-height: 32px;
+    font-size: 12px;
+}}
+QTabWidget#ribbon QToolButton:hover {{
+    background-color: {SURFACE_2};
+    border: 1px solid {BORDER};
+}}
+QTabWidget#ribbon QToolButton:pressed {{
+    background-color: {BORDER};
+}}
+QTabWidget#ribbon QToolButton:disabled {{
+    color: {MUTED};
+}}
+QTabWidget#ribbon QPushButton {{
+    min-height: 32px;
+    padding: 4px 10px;
+    font-size: 12px;
+}}
+QTabWidget#ribbon QComboBox, QTabWidget#ribbon QSpinBox {{
+    min-height: 32px;
+    padding: 2px 6px;
+    font-size: 12px;
+}}
+QWidget#ribbonPage {{
+    background-color: {SURFACE};
+}}
 QScrollArea, QAbstractScrollArea {{
     background-color: {BG};
     border: none;

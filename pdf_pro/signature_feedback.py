@@ -67,6 +67,21 @@ def validate_unlock(state: StudioState) -> Optional[str]:
     return None
 
 
+def find_initials_asset(vault):
+    """Return a vault asset that looks like initials, else None."""
+    if vault is None or not getattr(vault, "unlocked", False):
+        return None
+    lister = getattr(vault, "list_assets", None)
+    if lister is None:
+        return None
+    for asset in lister():
+        kind = (getattr(asset, "kind", "") or "").lower()
+        name = (getattr(asset, "name", "") or "").lower()
+        if kind == "initials" or "initial" in name:
+            return asset
+    return None
+
+
 def place_signature_on_page(
     overlay: OverlayDocument,
     asset: SignatureAsset,

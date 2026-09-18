@@ -115,7 +115,7 @@ ciphertext.
 ```bash
 pip install -r requirements-dev.txt
 pyinstaller --noconfirm PDF_Pro.spec
-VERSION=0.1.3 ./packaging/linux/build.sh
+VERSION=0.1.4 ./packaging/linux/build.sh
 ```
 
 Outputs: `dist/packages/pdf-pro_<ver>_amd64.deb`,
@@ -130,7 +130,8 @@ Implemented: open (dialog + drag-drop), progressive render, thumbnails, page
 nav, zoom / fit-width / fit-page, rotate **view**, password + corrupt notices,
 read-only source, overlay text/white-out/cover-and-replace/images/signatures,
 undo/redo, encrypted vault, pre-export preview, flatten export to a new file
-with validation.
+with validation. Ribbon (Home / Amend / Sign / Export). File dialogs use Qt's
+non-native dialogs so save/open works on Ubuntu when GTK/portal dialogs fail.
 
 **Not in M1 (see ROADMAP.md):** page rotate/delete/reorder, search, AcroForm
 fill UI, drafts/history, stamps, OCR, direct text replace, Windows/macOS.
