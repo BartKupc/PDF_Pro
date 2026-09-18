@@ -63,3 +63,17 @@ class SignatureDetectUnit(unittest.TestCase):
                 return "<< /Type /Page >>"
 
         self.assertFalse(detect_digital_signature(Fake()))
+
+    def test_detect_on_widget_fixture_pdf(self):
+        try:
+            import fitz
+        except ImportError:
+            self.skipTest("PyMuPDF not installed")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "sig-widget.pdf"
+            path.write_bytes(SIG_PDF)
+            doc = fitz.open(path.as_posix())
+            try:
+                self.assertTrue(detect_digital_signature(doc))
+            finally:
+                doc.close()

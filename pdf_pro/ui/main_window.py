@@ -770,14 +770,12 @@ class MainWindow(QMainWindow):
     def undo(self) -> None:
         p = self.pane()
         if p and p.session.undo.undo():
-            p.canvas.bind_overlay(p.session.overlay)
-            self._after_change()
+            self._reload_thumbs_and_page()
 
     def redo(self) -> None:
         p = self.pane()
         if p and p.session.undo.redo():
-            p.canvas.bind_overlay(p.session.overlay)
-            self._after_change()
+            self._reload_thumbs_and_page()
 
     def _after_change(self) -> None:
         p = self.pane()
@@ -985,7 +983,7 @@ class MainWindow(QMainWindow):
 
     def _page_extract(self) -> None:
         p = self.pane()
-        if not p:
+        if not p or not p.session.opened:
             return
         dest_str, _ = get_save_file_name(self, "Extract pages", "", "PDF files (*.pdf)")
         if not dest_str:
@@ -993,10 +991,40 @@ class MainWindow(QMainWindow):
         from pdf_pro.compose import write_plan_pdf
 
         sub = p.session.plan.extract([p.session.current_page])
-        try:
-            write_plan_pdf(sub, Path(dest_str), passwords={str(p.session.opened.path): p.session.opened.password or ""})
-        except Exception as exc:
-            QMessageBox.critical(self, APP_NAME, str(exc))
+        passwords = {str(p.session.opened.path): p.session.opened.password or ""}
+
+        def _do(progress):
+            if progress:
+                progress(10, "Extracting pages")
+            dest = write_plan_pdf(sub, Path(dest_str), passwords=passwords)
+            if progress:
+                progress(100, "Done")
+            return dest
+
+        prog = QProgressDialog("Extracting…", "", 0, 100, self)
+        prog.setCancelButton(None)
+        prog.setWindowModality(Qt.WindowModal)
+        prog.setMinimumDuration(0)
+        worker = ExportWorker(_do, self)
+        result_box = {"r": None, "err": None}
+
+        def ok(res):
+            result_box["r"] = res
+            prog.close()
+
+        def fail(msg):
+            result_box["err"] = msg
+            prog.close()
+
+        worker.finished_ok.connect(ok)
+        worker.failed.connect(fail)
+        worker.progress.connect(lambda pct, msg: (prog.setValue(pct), prog.setLabelText(msg)))
+        loop = QEventLoop(self)
+        worker.finished.connect(loop.quit)
+        worker.start()
+        loop.exec()
+        if result_box["err"]:
+            QMessageBox.critical(self, APP_NAME, str(result_box["err"]))
             return
         self._status(f"Extracted page to {dest_str}")
 

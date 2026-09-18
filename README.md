@@ -112,7 +112,7 @@ ciphertext.
 ```bash
 pip install -r requirements-dev.txt
 pyinstaller --noconfirm PDF_Pro.spec
-VERSION=0.2.0 ./packaging/linux/build.sh
+VERSION=0.2.1 ./packaging/linux/build.sh
 ```
 
 Outputs: `dist/packages/pdf-pro_<ver>_amd64.deb`,

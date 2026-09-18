@@ -26,7 +26,7 @@ class DocumentSession:
             page_count=page_count,
         )
         self.plan = plan or PagePlan.identity(self.overlay.source_path, self.overlay.page_count)
-        self.undo = UndoStack(self.overlay)
+        self.undo = UndoStack(self.overlay, plan=self.plan)
         self.current_page = 0
         self.zoom = DEFAULT_ZOOM
         self.view_rotation = 0
