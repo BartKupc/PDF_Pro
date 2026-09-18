@@ -48,3 +48,14 @@ class UndoTests(unittest.TestCase):
         hist.checkpoint()
         doc.add(make_text(0, 1, 1, 10, 10, text="b"))
         self.assertFalse(hist.can_redo())
+
+    def test_discard_if_unchanged_drops_selection_checkpoint(self):
+        doc = OverlayDocument()
+        hist = UndoStack(doc)
+        hist.checkpoint()
+        self.assertTrue(hist.discard_if_unchanged())
+        self.assertFalse(hist.can_undo())
+        hist.checkpoint()
+        doc.add(make_text(0, 0, 0, 10, 10, text="x"))
+        self.assertFalse(hist.discard_if_unchanged())
+        self.assertTrue(hist.can_undo())

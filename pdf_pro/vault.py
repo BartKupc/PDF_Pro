@@ -185,6 +185,24 @@ class SignatureVault:
                 return a
         return None
 
+    def rename(self, asset_id: str, name: str) -> SignatureAsset:
+        asset = self.get(asset_id)
+        if asset is None:
+            raise VaultError("Signature not found")
+        asset.name = (name or "").strip() or asset.name
+        self._persist()
+        return asset
+
+    def replace(self, asset_id: str, new_asset: SignatureAsset) -> SignatureAsset:
+        self._require_unlocked()
+        for i, a in enumerate(self._assets):
+            if a.id == asset_id:
+                new_asset.id = asset_id
+                self._assets[i] = new_asset
+                self._persist()
+                return new_asset
+        raise VaultError("Signature not found")
+
     def _persist(self) -> None:
         self._require_unlocked()
         assert self._key is not None and self._salt is not None

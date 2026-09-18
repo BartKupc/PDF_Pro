@@ -12,6 +12,7 @@ from pdf_pro.document import file_sha256, open_pdf
 from pdf_pro.fonts import font_path, resolve_family
 from pdf_pro.overlay import OverlayDocument, OverlayItem
 from pdf_pro.page_coords import overlay_point, overlay_rect
+from pdf_pro.page_plan import PagePlan
 
 
 class ExportError(Exception):
@@ -64,6 +65,17 @@ def _page_rotate(page) -> int:
     return int(getattr(page, "rotation", 0) or 0) % 360
 
 
+def _align_const(align: str):
+    import fitz
+
+    a = (align or "left").lower()
+    if a == "center":
+        return fitz.TEXT_ALIGN_CENTER
+    if a == "right":
+        return fitz.TEXT_ALIGN_RIGHT
+    return fitz.TEXT_ALIGN_LEFT
+
+
 def _insert_text(page, item: OverlayItem, data: dict) -> None:
     import fitz
 
@@ -74,31 +86,43 @@ def _insert_text(page, item: OverlayItem, data: dict) -> None:
     color = _hex_to_rgb(data.get("color") or "#000000")
     text = str(data.get("text") or "")
     rect = _item_rect(page, item)
+    opacity = float(data.get("opacity") if data.get("opacity") is not None else 1.0)
+    bg = data.get("background") or ""
+    if bg:
+        page.draw_rect(rect, color=None, fill=_hex_to_rgb(bg), width=0, fill_opacity=max(0.0, min(1.0, opacity)))
     fontname = f"f_{family.replace(' ', '_')}_{'b' if bold else 'r'}"
     try:
         page.insert_font(fontname=fontname, fontfile=path.as_posix())
     except Exception:
-        fontname = "helv"
-    page.insert_textbox(
-        rect,
-        text,
+        fontname = "heit" if data.get("italic") else "helv"
+    morph = None
+    if data.get("italic"):
+        morph = (fitz.Point(rect.x0, rect.y1), fitz.Matrix(1, 0, 0.25, 1, 0, 0))
+    kwargs = dict(
         fontname=fontname,
         fontsize=fontsize,
         color=color,
-        align=fitz.TEXT_ALIGN_LEFT,
+        align=_align_const(str(data.get("align") or "left")),
         rotate=_page_rotate(page),
     )
+    if morph is not None:
+        kwargs["morph"] = morph
+    page.insert_textbox(rect, text, **kwargs)
+    if data.get("underline") and text:
+        y = min(rect.y1 - 1, rect.y0 + fontsize * 1.15)
+        page.draw_line(fitz.Point(rect.x0, y), fitz.Point(rect.x1, y), color=color, width=0.6)
 
 
 def _insert_image(page, item: OverlayItem, png_b64: str) -> None:
     if not png_b64:
         return
     raw = base64.b64decode(png_b64)
+    rotate = (_page_rotate(page) + int(item.rotation or 0)) % 360
     page.insert_image(
         _item_rect(page, item),
         stream=raw,
         keep_proportion=False,
-        rotate=_page_rotate(page),
+        rotate=rotate,
     )
 
 
@@ -134,9 +158,96 @@ def _draw_strokes(page, item: OverlayItem, strokes: list) -> None:
     shape.commit()
 
 
-def apply_item(page, item: OverlayItem) -> None:
+def _draw_arrowhead(page, x0, y0, x1, y1, color, width_pt) -> None:
+    import math
+
     import fitz
 
+    ang = math.atan2(y1 - y0, x1 - x0)
+    size = max(6.0, width_pt * 4)
+    left = fitz.Point(x1 - size * math.cos(ang - 0.4), y1 - size * math.sin(ang - 0.4))
+    right = fitz.Point(x1 - size * math.cos(ang + 0.4), y1 - size * math.sin(ang + 0.4))
+    page.draw_polyline([left, fitz.Point(x1, y1), right], color=color, width=width_pt, closePath=False)
+
+
+def _draw_shape(page, item: OverlayItem) -> None:
+    import fitz
+
+    data = item.data or {}
+    kind = str(data.get("kind") or "rect")
+    stroke = _hex_to_rgb(data.get("stroke") or "#000000")
+    fill_raw = data.get("fill") or ""
+    fill = _hex_to_rgb(fill_raw) if fill_raw else None
+    width_pt = float(data.get("width_pt") or 1.5)
+    opacity = float(data.get("opacity") if data.get("opacity") is not None else 1.0)
+    rect = _item_rect(page, item)
+    x0, y0, x1, y1 = rect.x0, rect.y0, rect.x1, rect.y1
+    if kind == "highlight":
+        fill = fill or (1, 1, 0)
+        page.draw_rect(rect, color=None, fill=fill, width=0, fill_opacity=min(0.45, opacity))
+        return
+    if kind == "underline":
+        y = y1 - 1
+        page.draw_line(fitz.Point(x0, y), fitz.Point(x1, y), color=stroke, width=max(1.0, width_pt))
+        return
+    if kind == "strike":
+        y = (y0 + y1) / 2
+        page.draw_line(fitz.Point(x0, y), fitz.Point(x1, y), color=stroke, width=max(1.0, width_pt))
+        return
+    if kind == "line":
+        page.draw_line(fitz.Point(x0, y0), fitz.Point(x1, y1), color=stroke, width=width_pt)
+        return
+    if kind == "arrow":
+        page.draw_line(fitz.Point(x0, y0), fitz.Point(x1, y1), color=stroke, width=width_pt)
+        _draw_arrowhead(page, x0, y0, x1, y1, stroke, width_pt)
+        return
+    if kind == "ellipse":
+        page.draw_oval(rect, color=stroke, fill=fill, width=width_pt if fill is None else 0, fill_opacity=opacity)
+        return
+    if kind == "freehand":
+        pts = data.get("points") or []
+        if len(pts) < 2:
+            return
+        shape = page.new_shape()
+        prev = None
+        for p in pts:
+            if isinstance(p, dict):
+                lx, ly = float(p.get("x", 0)), float(p.get("y", 0))
+            else:
+                lx, ly = float(p[0]), float(p[1])
+            vx = item.x + lx * item.width
+            vy = item.y + ly * item.height
+            x, y = overlay_point(page, vx, vy)
+            if prev is not None:
+                shape.draw_line(fitz.Point(*prev), fitz.Point(x, y))
+            prev = (x, y)
+        shape.finish(color=stroke, width=width_pt, stroke_opacity=opacity)
+        shape.commit()
+        return
+    # rect / black box
+    page.draw_rect(
+        rect,
+        color=stroke if fill is None else fill,
+        fill=fill,
+        width=0 if fill is not None else width_pt,
+        fill_opacity=opacity if fill is not None else 1,
+    )
+
+
+def _draw_signature_caption(page, item: OverlayItem, data: dict) -> None:
+    import fitz
+
+    bits = [str(data.get("label") or "").strip(), str(data.get("date") or "").strip()]
+    bits = [b for b in bits if b]
+    if not bits:
+        return
+    caption = "  ·  ".join(bits)
+    rect = _item_rect(page, item)
+    cap = fitz.Rect(rect.x0, rect.y1 + 1, rect.x1 + 80, rect.y1 + 16)
+    page.insert_textbox(cap, caption, fontname="helv", fontsize=8, color=(0.15, 0.15, 0.15))
+
+
+def apply_item(page, item: OverlayItem) -> None:
     data = item.data or {}
     if item.type == "whiteout":
         fill = _hex_to_rgb(data.get("color") or "#FFFFFF")
@@ -158,8 +269,9 @@ def apply_item(page, item: OverlayItem) -> None:
             _insert_image(page, item, png)
         elif data.get("text"):
             _insert_text(page, item, {**data, "font_family": data.get("font_family") or "Dancing Script"})
-        else:
-            pass
+        _draw_signature_caption(page, item, data)
+    elif item.type == "shape":
+        _draw_shape(page, item)
     else:
         raise ExportError(f"Unknown overlay type: {item.type}")
 
@@ -187,11 +299,31 @@ def validate_export(dest: Path, password: Optional[str] = None) -> None:
         opened.close()
 
 
+def _atomic_save(work, dest: Path) -> None:
+    dest = Path(dest)
+    tmp = dest.with_name(dest.name + ".partial")
+    try:
+        if tmp.exists():
+            tmp.unlink()
+        work.save(tmp.as_posix(), garbage=4, deflate=True)
+        os.replace(tmp.as_posix(), dest.as_posix())
+    except Exception as exc:
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except OSError:
+            pass
+        raise ExportError(f"Could not write export: {exc}") from exc
+
+
 def export_pdf(
     source: Path,
     overlay: OverlayDocument,
     dest: Path,
     password: Optional[str] = None,
+    plan: Optional[PagePlan] = None,
+    passwords: Optional[dict] = None,
+    progress=None,
 ) -> Path:
     source = Path(source).resolve()
     dest = Path(dest).resolve()
@@ -202,35 +334,54 @@ def export_pdf(
 
     before = file_sha256(source)
     dest.parent.mkdir(parents=True, exist_ok=True)
+    if progress:
+        progress(5, "Opening source")
 
-    opened = open_pdf(source, password=password)
+    work = None
     try:
-        import fitz
+        if plan is not None and plan.pages:
+            from pdf_pro.compose import ComposeError, compose_work_doc
 
-        # Work on a copy opened from bytes so the source file handle stays read-only.
-        data = source.read_bytes()
-        work = fitz.open(stream=data, filetype="pdf")
-        if work.is_encrypted:
-            if not password or not work.authenticate(password):
-                work.close()
-                raise ExportError("Could not decrypt PDF for export")
-        try:
-            flatten_overlays(work, overlay)
+            pwmap = dict(passwords or {})
+            if password:
+                pwmap.setdefault(str(source), password)
+                pwmap.setdefault(source.as_posix(), password)
             try:
-                work.save(dest.as_posix(), garbage=4, deflate=True)
-            except Exception as exc:
-                raise ExportError(f"Could not write export: {exc}") from exc
-        finally:
-            work.close()
+                work = compose_work_doc(plan, passwords=pwmap)
+            except ComposeError as exc:
+                raise ExportError(str(exc)) from exc
+        else:
+            import fitz
+
+            data = source.read_bytes()
+            work = fitz.open(stream=data, filetype="pdf")
+            if work.is_encrypted:
+                if not password or not work.authenticate(password):
+                    work.close()
+                    raise ExportError("Could not decrypt PDF for export")
+        if progress:
+            progress(40, "Flattening overlays")
+        flatten_overlays(work, overlay)
+        if progress:
+            progress(70, "Writing file")
+        _atomic_save(work, dest)
     finally:
-        opened.close()
+        if work is not None:
+            try:
+                work.close()
+            except Exception:
+                pass
 
     after = file_sha256(source)
     if after != before:
         raise ExportError("Source file changed during export — aborting")
 
+    if progress:
+        progress(85, "Validating export")
     try:
         validate_export(dest)
     except Exception as exc:
         raise ExportError(f"Export was written but failed validation: {exc}") from exc
+    if progress:
+        progress(100, "Done")
     return dest

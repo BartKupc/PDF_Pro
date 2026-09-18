@@ -8,7 +8,17 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Optional
 
-ITEM_TYPES = ("text", "whiteout", "cover_replace", "image", "signature")
+ITEM_TYPES = ("text", "whiteout", "cover_replace", "image", "signature", "shape")
+SHAPE_KINDS = (
+    "rect",
+    "line",
+    "arrow",
+    "ellipse",
+    "highlight",
+    "underline",
+    "strike",
+    "freehand",
+)
 
 
 def _new_id() -> str:
@@ -72,6 +82,35 @@ class OverlayItem:
         return self.x <= px <= self.x + self.width and self.y <= py <= self.y + self.height
 
 
+def _text_style(
+    text: str,
+    font_family: str,
+    font_size: float,
+    color: str,
+    bold: bool,
+    italic: bool = False,
+    underline: bool = False,
+    align: str = "left",
+    background: str = "",
+    opacity: float = 1.0,
+) -> dict:
+    align_n = (align or "left").lower()
+    if align_n not in ("left", "center", "right"):
+        align_n = "left"
+    return {
+        "text": text,
+        "font_family": font_family,
+        "font_size": font_size,
+        "color": color,
+        "bold": bool(bold),
+        "italic": bool(italic),
+        "underline": bool(underline),
+        "align": align_n,
+        "background": background or "",
+        "opacity": float(opacity),
+    }
+
+
 def make_text(
     page: int,
     x: float,
@@ -83,6 +122,11 @@ def make_text(
     font_size: float = 12,
     color: str = "#000000",
     bold: bool = False,
+    italic: bool = False,
+    underline: bool = False,
+    align: str = "left",
+    background: str = "",
+    opacity: float = 1.0,
 ) -> OverlayItem:
     return OverlayItem(
         id=_new_id(),
@@ -92,13 +136,9 @@ def make_text(
         y=y,
         width=width,
         height=height,
-        data={
-            "text": text,
-            "font_family": font_family,
-            "font_size": font_size,
-            "color": color,
-            "bold": bool(bold),
-        },
+        data=_text_style(
+            text, font_family, font_size, color, bold, italic, underline, align, background, opacity
+        ),
     )
 
 
@@ -128,8 +168,17 @@ def make_cover_replace(
     font_size: float = 12,
     color: str = "#000000",
     bold: bool = False,
+    italic: bool = False,
+    underline: bool = False,
+    align: str = "left",
+    background: str = "",
+    opacity: float = 1.0,
     fill: str = "#FFFFFF",
 ) -> OverlayItem:
+    data = _text_style(
+        text, font_family, font_size, color, bold, italic, underline, align, background, opacity
+    )
+    data["fill"] = fill
     return OverlayItem(
         id=_new_id(),
         type="cover_replace",
@@ -138,14 +187,7 @@ def make_cover_replace(
         y=y,
         width=width,
         height=height,
-        data={
-            "text": text,
-            "font_family": font_family,
-            "font_size": font_size,
-            "color": color,
-            "bold": bool(bold),
-            "fill": fill,
-        },
+        data=data,
     )
 
 
@@ -182,6 +224,8 @@ def make_signature(
     text: str = "",
     font_family: str = "Dancing Script",
     vault_id: str = "",
+    date: str = "",
+    label: str = "",
 ) -> OverlayItem:
     return OverlayItem(
         id=_new_id(),
@@ -198,6 +242,43 @@ def make_signature(
             "text": text,
             "font_family": font_family,
             "vault_id": vault_id,
+            "date": date,
+            "label": label,
+        },
+    )
+
+
+def make_shape(
+    page: int,
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    kind: str,
+    *,
+    stroke: str = "#000000",
+    fill: str = "",
+    width_pt: float = 1.5,
+    opacity: float = 1.0,
+    points: Optional[list] = None,
+) -> OverlayItem:
+    if kind not in SHAPE_KINDS:
+        raise ValueError(f"Unknown shape kind: {kind}")
+    return OverlayItem(
+        id=_new_id(),
+        type="shape",
+        page=page,
+        x=x,
+        y=y,
+        width=width,
+        height=height,
+        data={
+            "kind": kind,
+            "stroke": stroke,
+            "fill": fill,
+            "width_pt": float(width_pt),
+            "opacity": float(opacity),
+            "points": points or [],
         },
     )
 

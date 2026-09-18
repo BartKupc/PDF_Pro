@@ -54,6 +54,7 @@ class PreviewAcceptGateTests(unittest.TestCase):
             _write_pdf(src)
             overlay = OverlayDocument(source_path=str(src), page_count=1)
             dlg = PreviewDialog(src, overlay, None)
+            dlg.wait_ready()
             self.assertTrue(dlg.export_btn.isEnabled())
             dlg.export_btn.click()
             self.assertTrue(dlg.ok)
@@ -91,6 +92,7 @@ class ExportFlowAcceptTests(unittest.TestCase):
                 self.assertIsNotNone(win.opened)
 
                 def auto_exec(dlg):
+                    dlg.wait_ready()
                     dlg.export_btn.click()
                     return QDialog.DialogCode.Accepted
 

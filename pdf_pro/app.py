@@ -18,7 +18,7 @@ def main(argv: list[str] | None = None) -> int:
 
     QCoreApplication.setApplicationName(APP_NAME)
     QCoreApplication.setOrganizationName(ORG_NAME)
-    QCoreApplication.setApplicationVersion("0.1.5")
+    QCoreApplication.setApplicationVersion("0.2.0")
     QCoreApplication.setOrganizationDomain(APP_ID)
 
     app = QApplication(argv)

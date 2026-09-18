@@ -295,6 +295,21 @@ QMessageBox {{
 QInputDialog {{
     background-color: {SURFACE};
 }}
+QProgressBar {{
+    background-color: {SURFACE};
+    border: 1px solid {BORDER};
+    border-radius: 3px;
+    text-align: center;
+    color: {TEXT};
+    min-height: 12px;
+}}
+QProgressBar::chunk {{
+    background-color: {ACCENT};
+}}
+QTabWidget#docTabs::pane {{
+    background-color: {SURFACE};
+    border: none;
+}}
 QHeaderView::section {{
     background-color: {SURFACE};
     color: {MUTED};

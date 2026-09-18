@@ -188,6 +188,17 @@ class SignatureStudio(QDialog):
         vl.addWidget(self.pass_edit)
         vl.addWidget(unlock_btn)
         vl.addWidget(self.vault_list)
+        mgr = QHBoxLayout()
+        rename_btn = QPushButton("Rename")
+        replace_btn = QPushButton("Replace")
+        delete_btn = QPushButton("Delete")
+        rename_btn.clicked.connect(self._rename_vault)
+        replace_btn.clicked.connect(self._replace_vault)
+        delete_btn.clicked.connect(self._delete_vault)
+        mgr.addWidget(rename_btn)
+        mgr.addWidget(replace_btn)
+        mgr.addWidget(delete_btn)
+        vl.addLayout(mgr)
         self.tabs.addTab(vault_tab, "Vault")
         self._refresh_vault_status()
         if 0 <= initial_tab < self.tabs.count():
@@ -375,3 +386,62 @@ class SignatureStudio(QDialog):
             return
         self.result_asset = asset
         self.accept()
+
+    def _selected_vault_id(self) -> str | None:
+        row = self.vault_list.currentItem()
+        if not row or not self.vault.unlocked:
+            return None
+        return row.data(Qt.UserRole)
+
+    def _rename_vault(self) -> None:
+        vid = self._selected_vault_id()
+        if not vid:
+            self._show_feedback("Select a saved signature from the vault.", vault=True)
+            return
+        from PySide6.QtWidgets import QInputDialog
+
+        name, ok = QInputDialog.getText(self, "Rename signature", "New name:")
+        if not ok or not name.strip():
+            return
+        try:
+            self.vault.rename(vid, name.strip())
+        except VaultError as exc:
+            self._show_feedback(str(exc), vault=True)
+            return
+        self._fill_list()
+        self._show_feedback("Renamed.", ok=True)
+
+    def _replace_vault(self) -> None:
+        vid = self._selected_vault_id()
+        if not vid:
+            self._show_feedback("Select a saved signature from the vault.", vault=True)
+            return
+        # Build from the create tabs (not vault tab)
+        tab = self.tabs.currentIndex()
+        if tab == 3:
+            self._show_feedback("Switch to Draw, Type, or Upload, then Replace.")
+            return
+        asset = self._current_asset()
+        if not asset:
+            self._show_feedback("Nothing to replace with.")
+            return
+        try:
+            self.vault.replace(vid, asset)
+        except VaultError as exc:
+            self._show_feedback(str(exc), vault=True)
+            return
+        self._fill_list()
+        self._show_feedback("Replaced.", ok=True)
+
+    def _delete_vault(self) -> None:
+        vid = self._selected_vault_id()
+        if not vid:
+            self._show_feedback("Select a saved signature from the vault.", vault=True)
+            return
+        try:
+            self.vault.remove(vid)
+        except VaultError as exc:
+            self._show_feedback(str(exc), vault=True)
+            return
+        self._fill_list()
+        self._show_feedback("Deleted.", ok=True)

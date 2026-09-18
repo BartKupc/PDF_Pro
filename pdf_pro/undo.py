@@ -34,6 +34,15 @@ class UndoStack:
             self._undo.pop(0)
         self._redo.clear()
 
+    def discard_if_unchanged(self) -> bool:
+        """Drop the last checkpoint when no mutation happened (selection click)."""
+        if not self._undo or self._closed:
+            return False
+        if self._undo[-1] == self._doc.snapshot():
+            self._undo.pop()
+            return True
+        return False
+
     def undo(self) -> bool:
         if not self.can_undo():
             return False

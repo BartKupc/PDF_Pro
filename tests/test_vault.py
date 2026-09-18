@@ -61,3 +61,16 @@ class VaultTests(unittest.TestCase):
         self.assertEqual(s2, salt)
         self.assertEqual(rest, body)
         self.assertEqual(ver, 1)
+
+    def test_rename_replace_delete(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            v = self._vault(tmp)
+            v.set_passphrase("pw")
+            v.add(SignatureAsset(id="s1", name="old", kind="draw", png_b64="QQ=="))
+            v.rename("s1", "new-name")
+            self.assertEqual(v.get("s1").name, "new-name")
+            v.replace("s1", SignatureAsset(id="ignore", name="replaced", kind="type", text="BK"))
+            self.assertEqual(v.get("s1").text, "BK")
+            self.assertEqual(v.get("s1").id, "s1")
+            v.remove("s1")
+            self.assertIsNone(v.get("s1"))

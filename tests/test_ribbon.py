@@ -13,10 +13,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
 class RibbonSpecTests(unittest.TestCase):
-    def test_tab_order_is_home_amend_sign_export(self):
+    def test_tab_order_is_home_amend_pages_sign_export(self):
         from pdf_pro.ribbon_spec import TAB_ORDER
 
-        self.assertEqual(list(TAB_ORDER), ["Home", "Amend", "Sign", "Export"])
+        self.assertEqual(list(TAB_ORDER), ["Home", "Amend", "Pages", "Sign", "Export"])
 
     def test_every_action_lives_in_exactly_one_tab(self):
         from pdf_pro.ribbon_spec import ACTIONS
@@ -39,6 +39,11 @@ class RibbonSpecTests(unittest.TestCase):
         home = actions_in("Home")
         for aid in (
             "open",
+            "drafts",
+            "history",
+            "wipe",
+            "search_box",
+            "find_next",
             "prev",
             "next",
             "page_label",
@@ -61,8 +66,28 @@ class RibbonSpecTests(unittest.TestCase):
             "insert_image",
             "undo",
             "redo",
+            "shape_rect",
+            "shape_pen",
+            "italic",
+            "rotate_item",
+            "duplicate_item",
         ):
             self.assertIn(aid, amend)
+
+    def test_locked_pages_grouping(self):
+        from pdf_pro.ribbon_spec import actions_in
+
+        pages = actions_in("Pages")
+        for aid in (
+            "page_rotate",
+            "page_delete",
+            "page_duplicate",
+            "page_up",
+            "page_down",
+            "page_extract",
+            "page_merge",
+        ):
+            self.assertIn(aid, pages)
 
     def test_locked_sign_grouping(self):
         from pdf_pro.ribbon_spec import actions_in
@@ -141,7 +166,7 @@ class RibbonWidgetTests(unittest.TestCase):
         }
         bar = RibbonBar()
         bar.populate(ACTIONS, extras)
-        self.assertEqual(bar.count(), 4)
+        self.assertEqual(bar.count(), 5)
         self.assertEqual([bar.tabText(i) for i in range(bar.count())], list(TAB_ORDER))
         self.assertLessEqual(bar.maximumHeight(), 110)
         self.assertGreaterEqual(bar.minimumHeight(), 90)

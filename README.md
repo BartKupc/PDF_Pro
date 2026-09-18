@@ -112,7 +112,7 @@ ciphertext.
 ```bash
 pip install -r requirements-dev.txt
 pyinstaller --noconfirm PDF_Pro.spec
-VERSION=0.1.5 ./packaging/linux/build.sh
+VERSION=0.2.0 ./packaging/linux/build.sh
 ```
 
 Outputs: `dist/packages/pdf-pro_<ver>_amd64.deb`,
@@ -121,17 +121,29 @@ Outputs: `dist/packages/pdf-pro_<ver>_amd64.deb`,
 GitHub Actions (`.github/workflows/release.yml`) does the same on `v*` tags.
 Do not expect this repo to push itself — Bart publishes.
 
+## Milestone 2 status
+
+Implemented: multi-document tabs (edits/undo isolated), find-in-doc + copy,
+full text style (italic/underline/alignment/background/opacity), shapes
+(rects including black boxes, lines, arrows, circles, highlights, underline,
+strike-through, freehand), image/signature rotate-duplicate-layer, page
+rotate/delete/reorder/duplicate, merge + extract, signature date/label,
+vault rename/replace/delete, drafts + crash recovery, local history + wipe,
+scan-only and missing-font notices, off-thread preview/export with progress,
+atomic export writes, fitz lock around render.
+
+**Not in M2 (see ROADMAP.md M3):** stamps, direct in-PDF text replace, OCR,
+compression, image→PDF, page numbers/headers/watermarks, open/send after
+export, certificate-backed signing.
+
 ## Milestone 1 status
 
 Implemented: open (dialog + drag-drop), progressive render, thumbnails, page
 nav, zoom / fit-width / fit-page, rotate **view**, password + corrupt notices,
 read-only source, overlay text/white-out/cover-and-replace/images/signatures,
 undo/redo, encrypted vault, pre-export preview, flatten export to a new file
-with validation. Ribbon (Home / Amend / Sign / Export). File dialogs use Qt's
+with validation. Ribbon (Home / Amend / Pages / Sign / Export). File dialogs use Qt's
 non-native dialogs so save/open works on Ubuntu when GTK/portal dialogs fail.
-
-**Not in M1 (see ROADMAP.md):** page rotate/delete/reorder, search, AcroForm
-fill UI, drafts/history, stamps, OCR, direct text replace, Windows/macOS.
 
 ## Bundled fonts
 

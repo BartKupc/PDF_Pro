@@ -6,6 +6,7 @@ import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+import threading
 
 from pdf_pro.constants import CORRUPT_NOTICE, PASSWORD_WRONG, UNSUPPORTED_NOTICE
 
@@ -99,23 +100,31 @@ class OpenedPdf:
     encrypted: bool
     has_digital_signature: bool
     _doc: object
+    _lock: threading.RLock = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self._lock is None:
+            object.__setattr__(self, "_lock", threading.RLock())
 
     def close(self) -> None:
-        try:
-            self._doc.close()
-        except Exception:
-            pass
+        with self._lock:
+            try:
+                self._doc.close()
+            except Exception:
+                pass
 
     def page_size(self, index: int) -> tuple[float, float]:
-        page = self._doc[index]
-        rect = page.rect
-        return float(rect.width), float(rect.height)
+        with self._lock:
+            page = self._doc[index]
+            rect = page.rect
+            return float(rect.width), float(rect.height)
 
     def render_pixmap(self, index: int, scale: float = 1.5):
         fitz = _fitz()
-        page = self._doc[index]
-        mat = fitz.Matrix(scale, scale)
-        return page.get_pixmap(matrix=mat, alpha=False)
+        with self._lock:
+            page = self._doc[index]
+            mat = fitz.Matrix(scale, scale)
+            return page.get_pixmap(matrix=mat, alpha=False)
 
     @property
     def fitz_doc(self):

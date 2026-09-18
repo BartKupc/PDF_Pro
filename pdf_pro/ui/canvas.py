@@ -13,6 +13,7 @@ class PageCanvas(QGraphicsView):
     text_edit_requested = Signal(str)
     page_clicked = Signal(float, float)  # PDF points
     rubber_finished = Signal(float, float, float, float)
+    freehand_finished = Signal(list)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -34,11 +35,27 @@ class PageCanvas(QGraphicsView):
         self._rubber = None
         self._rubber_origin = None
         self._guides: list[tuple[str, float]] = []
+        self.search_rects: list[tuple[float, float, float, float]] = []
+        self._pen_pts: list[dict] = []
         self.setAcceptDrops(False)
 
     def set_tool(self, tool: str) -> None:
         self._tool = tool
         self.setCursor(Qt.CrossCursor if tool != "select" else Qt.ArrowCursor)
+
+    SHAPE_TOOLS = (
+        "rect",
+        "line",
+        "arrow",
+        "ellipse",
+        "highlight",
+        "underline",
+        "strike",
+        "pen",
+        "text",
+        "whiteout",
+        "cover",
+    )
 
     def set_page_image(self, image, pdf_w: float, pdf_h: float, scale: float) -> None:
         pix = QPixmap.fromImage(image)
@@ -103,7 +120,12 @@ class PageCanvas(QGraphicsView):
     def mousePressEvent(self, event) -> None:
         if event.button() != Qt.LeftButton:
             return super().mousePressEvent(event)
-        if self._tool in ("whiteout", "cover", "text"):
+        if self._tool == "pen":
+            x, y = self.pdf_pos(event.pos())
+            self._pen_pts = [{"x": x, "y": y}]
+            event.accept()
+            return
+        if self._tool in self.SHAPE_TOOLS:
             self._rubber_origin = event.pos()
             self._rubber = QRubberBand(QRubberBand.Rectangle, self)
             self._rubber.setGeometry(event.pos().x(), event.pos().y(), 1, 1)
@@ -113,6 +135,11 @@ class PageCanvas(QGraphicsView):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
+        if self._tool == "pen" and self._pen_pts:
+            x, y = self.pdf_pos(event.pos())
+            self._pen_pts.append({"x": x, "y": y})
+            event.accept()
+            return
         if self._rubber and self._rubber_origin:
             x0, y0 = self._rubber_origin.x(), self._rubber_origin.y()
             x1, y1 = event.pos().x(), event.pos().y()
@@ -124,6 +151,15 @@ class PageCanvas(QGraphicsView):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:
+        if self._tool == "pen" and self._pen_pts:
+            x, y = self.pdf_pos(event.pos())
+            self._pen_pts.append({"x": x, "y": y})
+            pts = self._pen_pts
+            self._pen_pts = []
+            if len(pts) >= 2:
+                self.freehand_finished.emit(pts)
+            event.accept()
+            return
         if self._rubber and self._rubber_origin:
             x0, y0 = self.pdf_pos(self._rubber_origin)
             x1, y1 = self.pdf_pos(event.pos())
@@ -132,7 +168,9 @@ class PageCanvas(QGraphicsView):
             self._rubber_origin = None
             x, y = min(x0, x1), min(y0, y1)
             w, h = abs(x1 - x0), abs(y1 - y0)
-            if w > 2 and h > 2:
+            if self._tool in ("line", "arrow"):
+                self.rubber_finished.emit(min(x0, x1), min(y0, y1), abs(x1 - x0) or 1, abs(y1 - y0) or 1)
+            elif w > 2 and h > 2:
                 self.rubber_finished.emit(x, y, w, h)
             event.accept()
             return
@@ -140,16 +178,20 @@ class PageCanvas(QGraphicsView):
 
     def drawForeground(self, painter: QPainter, rect) -> None:
         super().drawForeground(painter, rect)
-        if not self._guides:
-            return
-        painter.setPen(QPen(QColor(255, 80, 80, 180), 0, Qt.DashLine))
-        for kind, val in self._guides:
-            if kind == "v":
-                x = val * self.zoom
-                painter.drawLine(x, 0, x, self.page_h * self.zoom)
-            else:
-                y = val * self.zoom
-                painter.drawLine(0, y, self.page_w * self.zoom, y)
+        if self._guides:
+            painter.setPen(QPen(QColor(255, 80, 80, 180), 0, Qt.DashLine))
+            for kind, val in self._guides:
+                if kind == "v":
+                    x = val * self.zoom
+                    painter.drawLine(x, 0, x, self.page_h * self.zoom)
+                else:
+                    y = val * self.zoom
+                    painter.drawLine(0, y, self.page_w * self.zoom, y)
+        if self.search_rects:
+            painter.setPen(QPen(QColor(255, 200, 0, 220), 1))
+            painter.setBrush(QColor(255, 220, 0, 80))
+            for x, y, w, h in self.search_rects:
+                painter.drawRect(x * self.zoom, y * self.zoom, w * self.zoom, h * self.zoom)
 
     def selected_item(self) -> OverlayItem | None:
         for g in self._graphics.values():
@@ -161,3 +203,6 @@ class PageCanvas(QGraphicsView):
         t = QTransform()
         t.rotate(self.view_rotation)
         self.setTransform(t)
+        rect = self.scene.sceneRect()
+        if rect.width() > 0 and rect.height() > 0:
+            self.centerOn(rect.center())

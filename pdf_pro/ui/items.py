@@ -88,15 +88,29 @@ class OverlayGraphics(QGraphicsObject):
             painter.fillRect(body, QColor(255, 255, 200, 60))
             self._paint_text(painter, body, data)
         elif kind in ("image", "signature"):
+            painter.save()
+            if self.item.rotation:
+                painter.translate(body.center())
+                painter.rotate(self.item.rotation)
+                painter.translate(-body.center())
             pix = self._pixmap()
             if pix:
                 painter.drawPixmap(body.toRect(), pix)
             else:
                 painter.fillRect(body, QColor(230, 230, 255, 80))
+            painter.restore()
             painter.fillRect(body, EDITOR_TINT)
             if kind == "signature":
                 painter.setPen(QPen(QColor(80, 80, 80, 160), 1, Qt.DotLine))
                 painter.drawRect(body)
+                cap = "  ".join(
+                    p for p in (str(data.get("label") or ""), str(data.get("date") or "")) if p
+                )
+                if cap:
+                    painter.setPen(QPen(QColor(200, 200, 200)))
+                    painter.drawText(body.adjusted(2, body.height() - 14, -2, 0), cap)
+        elif kind == "shape":
+            self._paint_shape(painter, body, data)
         painter.setPen(COVER_PEN if kind == "cover_replace" else SELECT_PEN)
         if self.isSelected():
             painter.drawRect(body)
@@ -105,14 +119,69 @@ class OverlayGraphics(QGraphicsObject):
             painter.setPen(QPen(QColor(30, 90, 200, 90), 1, Qt.DashLine))
             painter.drawRect(body)
 
+    def _paint_shape(self, painter: QPainter, body: QRectF, data: dict) -> None:
+        kind = str(data.get("kind") or "rect")
+        stroke = _qcolor(data.get("stroke") or "#000000")
+        fill = data.get("fill") or ""
+        painter.setPen(QPen(stroke, max(1.0, float(data.get("width_pt") or 1.5))))
+        if fill:
+            painter.setBrush(_qcolor(fill, int(255 * min(1.0, float(data.get("opacity") or 1)))))
+        else:
+            painter.setBrush(Qt.NoBrush)
+        if kind == "highlight":
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(255, 230, 0, 90))
+            painter.drawRect(body)
+        elif kind == "underline":
+            y = body.bottom() - 1
+            painter.drawLine(body.left(), y, body.right(), y)
+        elif kind == "strike":
+            y = body.center().y()
+            painter.drawLine(body.left(), y, body.right(), y)
+        elif kind == "line":
+            painter.drawLine(body.topLeft(), body.bottomRight())
+        elif kind == "arrow":
+            painter.drawLine(body.topLeft(), body.bottomRight())
+            painter.drawLine(body.bottomRight(), body.bottomRight() + QPointF(-8, -4))
+            painter.drawLine(body.bottomRight(), body.bottomRight() + QPointF(-4, -8))
+        elif kind == "ellipse":
+            painter.drawEllipse(body)
+        elif kind == "freehand":
+            pts = data.get("points") or []
+            poly = QPolygonF()
+            for p in pts:
+                if isinstance(p, dict):
+                    lx, ly = float(p.get("x", 0)), float(p.get("y", 0))
+                else:
+                    lx, ly = float(p[0]), float(p[1])
+                poly.append(QPointF(lx * self.zoom, ly * self.zoom))
+            if poly.count() >= 2:
+                painter.drawPolyline(poly)
+        else:
+            painter.drawRect(body)
+            painter.fillRect(body, EDITOR_TINT)
+
     def _paint_text(self, painter: QPainter, body: QRectF, data: dict) -> None:
         font = QFont(data.get("font_family") or "DejaVu Sans")
         # font size is in PDF points; scene is PDF points * zoom
         font.setPointSizeF(max(4.0, float(data.get("font_size") or 12) * self.zoom * 0.75))
         font.setBold(bool(data.get("bold")))
+        font.setItalic(bool(data.get("italic")))
+        font.setUnderline(bool(data.get("underline")))
         painter.setFont(font)
+        bg = data.get("background") or ""
+        if bg:
+            painter.fillRect(body, _qcolor(bg, int(255 * float(data.get("opacity") or 1))))
         painter.setPen(_qcolor(data.get("color") or "#000000"))
-        painter.drawText(body.adjusted(2, 1, -2, -1), Qt.TextWordWrap, str(data.get("text") or ""))
+        align = str(data.get("align") or "left")
+        flags = Qt.TextWordWrap
+        if align == "center":
+            flags |= Qt.AlignHCenter
+        elif align == "right":
+            flags |= Qt.AlignRight
+        else:
+            flags |= Qt.AlignLeft
+        painter.drawText(body.adjusted(2, 1, -2, -1), flags, str(data.get("text") or ""))
 
     def _pixmap(self) -> QPixmap | None:
         import base64
