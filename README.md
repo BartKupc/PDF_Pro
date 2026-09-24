@@ -60,7 +60,7 @@ pytest -q
 Headless UI tests (CI sets `QT_QPA_PLATFORM=offscreen`; skip when PySide6/PyMuPDF are missing):
 
 ```bash
-QT_QPA_PLATFORM=offscreen python -m unittest tests.test_preview_accept tests.test_qt_instance_enums tests.test_signature_studio_place -v
+QT_QPA_PLATFORM=offscreen python -m unittest tests.test_preview_accept tests.test_qt_instance_enums tests.test_signature_studio_place tests.test_qimage_png -v
 ```
 
 ## Install from GitHub Release (Bart publishes tags)
@@ -114,7 +114,7 @@ vault. PDF_Pro does not delete the old file silently.
 ```bash
 pip install -r requirements-dev.txt
 pyinstaller --noconfirm PDF_Pro.spec
-VERSION=0.2.2 ./packaging/linux/build.sh
+VERSION=0.2.3 ./packaging/linux/build.sh
 ```
 
 Outputs: `dist/packages/pdf-pro_<ver>_amd64.deb`,

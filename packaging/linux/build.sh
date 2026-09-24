@@ -5,7 +5,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
-VERSION="${VERSION:-0.2.2}"
+VERSION="${VERSION:-0.2.3}"
 ARCH="${ARCH:-amd64}"
 DIST="$ROOT/dist"
 ONEDIR="$DIST/PDF_Pro"

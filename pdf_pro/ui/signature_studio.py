@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import base64
-import io
 
 from PySide6.QtCore import QPointF, Qt, QEvent
 from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen, QPixmap, QTabletEvent
@@ -33,6 +32,7 @@ from pdf_pro.signature_feedback import (
     validate_unlock,
     validate_use_on_page,
 )
+from pdf_pro.ui.qt_image import qimage_to_png_bytes
 from pdf_pro.vault import SignatureAsset, SignatureVault, VaultError, WrongPassphrase
 
 
@@ -130,9 +130,7 @@ class DrawPad(QWidget):
                     b["y"] * img.height(),
                 )
         painter.end()
-        buf = io.BytesIO()
-        img.save(buf, "PNG")
-        return base64.b64encode(buf.getvalue()).decode("ascii")
+        return base64.b64encode(qimage_to_png_bytes(img)).decode("ascii")
 
 
 class SignatureStudio(QDialog):
@@ -255,9 +253,7 @@ class SignatureStudio(QDialog):
             self.upload_path.setText("Could not read image")
             return
         img = pix.toImage()
-        buf = io.BytesIO()
-        img.save(buf, "PNG")
-        self._upload_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        self._upload_b64 = base64.b64encode(qimage_to_png_bytes(img)).decode("ascii")
         self.upload_path.setText(path)
 
     def _refresh_vault_status(self) -> None:
@@ -381,9 +377,7 @@ class SignatureStudio(QDialog):
         p.setPen(QColor("black"))
         p.drawText(img.rect(), Qt.AlignCenter, text)
         p.end()
-        buf = io.BytesIO()
-        img.save(buf, "PNG")
-        return base64.b64encode(buf.getvalue()).decode("ascii")
+        return base64.b64encode(qimage_to_png_bytes(img)).decode("ascii")
 
     def _save_vault(self) -> None:
         state = self._studio_state()

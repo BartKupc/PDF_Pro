@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 from datetime import date
-from io import BytesIO
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QSize, QTimer, Slot, QEventLoop
@@ -80,6 +79,7 @@ from pdf_pro.signature_feedback import find_initials_asset, place_signature_on_p
 from pdf_pro.ui.document_pane import DocumentPane
 from pdf_pro.ui.file_dialogs import get_open_file_name, get_save_file_name
 from pdf_pro.ui.preview import PreviewDialog
+from pdf_pro.ui.qt_image import qimage_to_png_bytes
 from pdf_pro.ui.render_thread import RenderEngine, RenderThread
 from pdf_pro.ui.ribbon import RibbonBar
 from pdf_pro.ui.signature_studio import SignatureStudio
@@ -633,9 +633,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, APP_NAME, "Could not read that image.")
             return
         img = pix.toImage()
-        buf = BytesIO()
-        img.save(buf, "PNG")
-        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        b64 = base64.b64encode(qimage_to_png_bytes(img)).decode("ascii")
         pw, ph = p.session.opened.page_size(p.session.plan.pages[p.session.current_page].source_index)
         width = min(200, pw * 0.4)
         height = width * (pix.height() / max(1, pix.width()))
