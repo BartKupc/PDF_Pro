@@ -30,9 +30,12 @@ UNSUPPORTED_NOTICE = "This file is not a supported PDF."
 VAULT_WRONG_PASSPHRASE = (
     "Wrong passphrase. The signature vault was not unlocked and no data was exposed."
 )
-VAULT_FIRST_USE = (
-    "Set a passphrase for the signature vault. It is never stored. "
-    "You will need it each session to unlock saved signatures."
+VAULT_MIGRATE_PROMPT = (
+    "Vault is now stored unencrypted — enter your passphrase one last time "
+    "to migrate your signatures"
+)
+VAULT_MIGRATE_FORGOT = (
+    "Start with an empty vault. The old encrypted file is kept on disk."
 )
 
 DEFAULT_ZOOM = 1.25

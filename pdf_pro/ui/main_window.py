@@ -664,7 +664,7 @@ class MainWindow(QMainWindow):
         item.data["label"] = self.sig_label.text().strip()
         p.canvas.page_index = p.session.current_page
         p.canvas.bind_overlay(p.session.overlay)
-        p.canvas.viewport().update()
+        p.canvas.focus_overlay_item(item.id)
         self._after_change()
         self._status("Signature placed on this page.")
         self._refresh_initials_button()
@@ -672,7 +672,7 @@ class MainWindow(QMainWindow):
     def _place_initials(self) -> None:
         asset = find_initials_asset(self.vault)
         if not asset:
-            QMessageBox.information(self, APP_NAME, "No initials in the vault. Unlock the vault and save initials first.")
+            QMessageBox.information(self, APP_NAME, "No initials in the vault. Save initials first.")
             return
         p = self.pane()
         if not p or not p.session.opened:
@@ -683,7 +683,9 @@ class MainWindow(QMainWindow):
         item = place_signature_on_page(p.session.overlay, asset, p.session.current_page, pw, ph)
         item.data["date"] = self.sig_date.text().strip()
         item.data["label"] = self.sig_label.text().strip()
+        p.canvas.page_index = p.session.current_page
         p.canvas.bind_overlay(p.session.overlay)
+        p.canvas.focus_overlay_item(item.id)
         self._after_change()
 
     def delete_selected(self) -> None:

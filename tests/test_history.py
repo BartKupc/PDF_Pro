@@ -44,8 +44,7 @@ class HistoryWipeTests(unittest.TestCase):
         ov.add(make_text(0, 0, 0, 10, 10, text="x"))
         save_draft(ov, dirty=True)
         record_export("/tmp/a.pdf", "/tmp/a_amended.pdf", kind="amended")
-        vault = SignatureVault(path=self.root / "pdf_pro" / "vault" / "vault.bin")
-        vault.set_passphrase("pw")
+        vault = SignatureVault(path=self.root / "pdf_pro" / "vault" / "vault.json")
         vault.add(SignatureAsset(id="s1", name="n", kind="draw", png_b64="QQ=="))
         tmp = self.root / "pdf_pro" / "tmp"
         tmp.mkdir(parents=True, exist_ok=True)

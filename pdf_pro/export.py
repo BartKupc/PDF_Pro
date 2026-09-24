@@ -261,13 +261,14 @@ def apply_item(page, item: OverlayItem) -> None:
     elif item.type == "image":
         _insert_image(page, item, data.get("png_b64") or "")
     elif item.type == "signature":
-        strokes = data.get("strokes") or []
-        png = data.get("png_b64") or ""
-        if strokes:
-            _draw_strokes(page, item, strokes)
-        elif png:
-            _insert_image(page, item, png)
-        elif data.get("text"):
+        from pdf_pro.signature_feedback import signature_paint_source
+
+        source = signature_paint_source(data)
+        if source == "png":
+            _insert_image(page, item, data.get("png_b64") or "")
+        elif source == "strokes":
+            _draw_strokes(page, item, data.get("strokes") or [])
+        elif source == "text":
             _insert_text(page, item, {**data, "font_family": data.get("font_family") or "Dancing Script"})
         _draw_signature_caption(page, item, data)
     elif item.type == "shape":

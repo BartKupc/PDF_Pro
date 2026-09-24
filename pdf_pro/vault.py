@@ -1,6 +1,7 @@
-"""Passphrase-protected signature vault: AES-256-GCM at rest, Argon2id KDF.
+"""Plain local signature vault, with one-time migration from encrypted v0.2.1 files.
 
-Passphrase is never stored. Unlock is per process/session.
+New vaults are unencrypted JSON. Existing AES-256-GCM vault.bin files are left
+untouched until the user migrates (or chooses an empty vault).
 """
 
 from __future__ import annotations
@@ -20,8 +21,7 @@ from pdf_pro.constants import (
     VAULT_VERSION,
     VAULT_WRONG_PASSPHRASE,
 )
-from pdf_pro.kdf import derive_key
-from pdf_pro.paths import vault_file
+from pdf_pro.paths import vault_file, vault_plain_file
 
 
 class VaultError(Exception):
@@ -35,6 +35,10 @@ class VaultLocked(VaultError):
 class WrongPassphrase(VaultError):
     def __init__(self) -> None:
         super().__init__(VAULT_WRONG_PASSPHRASE)
+
+
+def is_encrypted_vault_bytes(raw: bytes) -> bool:
+    return bool(raw) and raw.startswith(VAULT_MAGIC)
 
 
 def _aesgcm_encrypt(key: bytes, plaintext: bytes) -> bytes:
@@ -108,58 +112,104 @@ class SignatureAsset:
         )
 
 
+def decrypt_legacy_assets(raw: bytes, passphrase: str) -> list[SignatureAsset]:
+    from pdf_pro.kdf import derive_key
+
+    _version, salt, blob = unpack_vault(raw)
+    key = derive_key(passphrase, salt)
+    plaintext = _aesgcm_decrypt(key, blob)
+    try:
+        payload = json.loads(plaintext.decode("utf-8"))
+    except json.JSONDecodeError as exc:
+        raise VaultError("Vault payload is corrupt") from exc
+    return [SignatureAsset.from_dict(x) for x in payload.get("signatures", [])]
+
+
+def write_legacy_encrypted_vault(path: Path, passphrase: str, assets: list[SignatureAsset]) -> None:
+    """Test/migration helper: write a v0.2.1 encrypted vault.bin."""
+    from pdf_pro.kdf import derive_key
+
+    if not passphrase:
+        raise VaultError("Passphrase must not be empty")
+    salt = secrets.token_bytes(SALT_LEN)
+    key = derive_key(passphrase, salt)
+    payload = json.dumps(
+        {"version": VAULT_VERSION, "signatures": [a.to_dict() for a in assets]},
+        separators=(",", ":"),
+    ).encode("utf-8")
+    packed = pack_vault(salt, _aesgcm_encrypt(key, payload))
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(packed)
+
+
 class SignatureVault:
     def __init__(self, path: Optional[Path] = None) -> None:
-        self.path = Path(path) if path else vault_file()
-        self._key: Optional[bytes] = None
-        self._salt: Optional[bytes] = None
+        given = Path(path) if path else vault_plain_file()
+        if given.suffix == ".bin":
+            self.legacy_path = given
+            self.path = given.with_suffix(".json")
+        else:
+            self.path = given
+            self.legacy_path = given.with_name("vault.bin") if given.name else vault_file()
         self._assets: list[SignatureAsset] = []
+        if self._plain_exists():
+            self._load_plain()
+
+    def _plain_exists(self) -> bool:
+        return self.path.is_file() and self.path.stat().st_size > 0
+
+    def _legacy_is_encrypted(self) -> bool:
+        if not self.legacy_path.is_file() or self.legacy_path.stat().st_size == 0:
+            return False
+        try:
+            return is_encrypted_vault_bytes(self.legacy_path.read_bytes())
+        except OSError:
+            return False
 
     @property
     def exists(self) -> bool:
-        return self.path.is_file() and self.path.stat().st_size > 0
+        return self._plain_exists() or self._legacy_is_encrypted()
+
+    @property
+    def needs_migration(self) -> bool:
+        if self._plain_exists():
+            return False
+        return self._legacy_is_encrypted()
 
     @property
     def unlocked(self) -> bool:
-        return self._key is not None
+        return not self.needs_migration
 
     def is_first_use(self) -> bool:
         return not self.exists
 
     def _require_unlocked(self) -> None:
-        if self._key is None:
-            raise VaultLocked("Signature vault is locked")
+        if not self.unlocked:
+            raise VaultLocked("Signature vault needs migration before use")
 
-    def set_passphrase(self, passphrase: str) -> None:
-        """First-use: create an empty encrypted vault."""
-        if self.exists:
-            raise VaultError("Vault already exists; unlock it instead")
-        if not passphrase:
-            raise VaultError("Passphrase must not be empty")
-        self._salt = secrets.token_bytes(SALT_LEN)
-        self._key = derive_key(passphrase, self._salt)
-        self._assets = []
-        self._persist()
-
-    def unlock(self, passphrase: str) -> None:
-        if not self.exists:
-            raise VaultError("No vault on disk; set a passphrase first")
-        raw = self.path.read_bytes()
-        _version, salt, blob = unpack_vault(raw)
-        key = derive_key(passphrase, salt)
-        plaintext = _aesgcm_decrypt(key, blob)
+    def _load_plain(self) -> None:
+        raw = self.path.read_text(encoding="utf-8")
         try:
-            payload = json.loads(plaintext.decode("utf-8"))
+            payload = json.loads(raw)
         except json.JSONDecodeError as exc:
             raise VaultError("Vault payload is corrupt") from exc
-        self._key = key
-        self._salt = salt
         self._assets = [SignatureAsset.from_dict(x) for x in payload.get("signatures", [])]
 
-    def lock(self) -> None:
-        self._key = None
-        self._salt = None
+    def migrate(self, passphrase: str) -> None:
+        if not self.needs_migration:
+            raise VaultError("No encrypted vault to migrate")
+        if not (passphrase or "").strip():
+            raise VaultError("Passphrase must not be empty")
+        raw = self.legacy_path.read_bytes()
+        assets = decrypt_legacy_assets(raw, passphrase)
+        self._assets = assets
+        self._persist()
+
+    def start_empty_leaving_encrypted(self) -> None:
+        """Use an empty plain vault; do not delete the encrypted original."""
         self._assets = []
+        self._persist()
 
     def list_assets(self) -> list[SignatureAsset]:
         self._require_unlocked()
@@ -204,28 +254,17 @@ class SignatureVault:
         raise VaultError("Signature not found")
 
     def _persist(self) -> None:
-        self._require_unlocked()
-        assert self._key is not None and self._salt is not None
         payload = json.dumps(
             {"version": VAULT_VERSION, "signatures": [a.to_dict() for a in self._assets]},
-            separators=(",", ":"),
-        ).encode("utf-8")
-        blob = _aesgcm_encrypt(self._key, payload)
-        packed = pack_vault(self._salt, blob)
+            indent=2,
+        )
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".bin.tmp")
-        tmp.write_bytes(packed)
+        tmp = self.path.with_suffix(".json.tmp")
+        tmp.write_text(payload, encoding="utf-8")
         tmp.replace(self.path)
 
     def disk_is_ciphertext(self) -> bool:
-        """True if the on-disk file does not contain recoverable PNG/JSON plaintext."""
-        if not self.exists:
-            return True
-        raw = self.path.read_bytes()
-        if not raw.startswith(VAULT_MAGIC):
+        """True only for an unmigrated encrypted legacy file with no plain vault."""
+        if self._plain_exists():
             return False
-        # PNG magic or JSON should never appear after the header in a valid vault
-        body = raw[len(VAULT_MAGIC) + 1 + SALT_LEN :]
-        if b"\x89PNG" in body or b'"signatures"' in body or b"png_b64" in body:
-            return False
-        return True
+        return self._legacy_is_encrypted()

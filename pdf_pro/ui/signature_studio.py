@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import io
 
-from PySide6.QtCore import QPointF, Qt
+from PySide6.QtCore import QPointF, Qt, QEvent
 from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen, QPixmap, QTabletEvent
 from PySide6.QtWidgets import (
     QDialog,
@@ -21,9 +21,10 @@ from PySide6.QtWidgets import (
     QWidget,
     QComboBox,
     QSpinBox,
+    QMessageBox,
 )
 
-from pdf_pro.constants import VISUAL_SIGNATURE_NOTICE
+from pdf_pro.constants import VISUAL_SIGNATURE_NOTICE, VAULT_MIGRATE_PROMPT, VAULT_MIGRATE_FORGOT
 from pdf_pro.fonts import HANDWRITING_FAMILY
 from pdf_pro.signature_feedback import (
     MSG_SAVED,
@@ -71,15 +72,24 @@ class DrawPad(QWidget):
         pressure = event.pressure()
         if pressure <= 0:
             pressure = 1.0
-        if event.type() == QTabletEvent.Type.TabletPress:
+        et = event.type()
+        if et == QEvent.Type.TabletPress:
             self._current = [self._norm(event.position(), pressure)]
-        elif event.type() == QTabletEvent.Type.TabletMove and self._current:
+        elif et == QEvent.Type.TabletMove and self._current:
             self._current.append(self._norm(event.position(), pressure))
-        elif event.type() == QTabletEvent.Type.TabletRelease and self._current:
+        elif et == QEvent.Type.TabletRelease and self._current:
             self.strokes.append(self._current)
             self._current = []
+        else:
+            event.ignore()
+            return
         self.update()
         event.accept()
+
+    def commit_in_progress(self) -> None:
+        if self._current:
+            self.strokes.append(self._current)
+            self._current = []
 
     def clear(self) -> None:
         self.strokes = []
@@ -179,14 +189,19 @@ class SignatureStudio(QDialog):
         vault_tab = QWidget()
         vl = QVBoxLayout(vault_tab)
         self.vault_status = QLabel()
+        self.vault_status.setWordWrap(True)
         self.pass_edit = QLineEdit()
         self.pass_edit.setEchoMode(QLineEdit.Password)
-        unlock_btn = QPushButton("Unlock / set passphrase")
-        unlock_btn.clicked.connect(self._unlock)
+        self.pass_edit.setPlaceholderText("Passphrase (one last time)")
+        self.migrate_btn = QPushButton("Migrate vault")
+        self.migrate_btn.clicked.connect(self._migrate)
+        self.empty_btn = QPushButton("Start with an empty vault")
+        self.empty_btn.clicked.connect(self._start_empty)
         self.vault_list = QListWidget()
         vl.addWidget(self.vault_status)
         vl.addWidget(self.pass_edit)
-        vl.addWidget(unlock_btn)
+        vl.addWidget(self.migrate_btn)
+        vl.addWidget(self.empty_btn)
         vl.addWidget(self.vault_list)
         mgr = QHBoxLayout()
         rename_btn = QPushButton("Rename")
@@ -246,13 +261,16 @@ class SignatureStudio(QDialog):
         self.upload_path.setText(path)
 
     def _refresh_vault_status(self) -> None:
-        if self.vault.is_first_use():
-            self.vault_status.setText("First use: enter a passphrase and click Unlock / set passphrase.")
-        elif self.vault.unlocked:
-            self.vault_status.setText("Vault unlocked for this session.")
-            self._fill_list()
-        else:
-            self.vault_status.setText("Vault locked. Enter passphrase to unlock this session.")
+        migrating = bool(self.vault.needs_migration)
+        self.pass_edit.setVisible(migrating)
+        self.migrate_btn.setVisible(migrating)
+        self.empty_btn.setVisible(migrating)
+        if migrating:
+            self.vault_status.setText(VAULT_MIGRATE_PROMPT)
+            self.vault_list.clear()
+            return
+        self.vault_status.setText("Saved signatures on this machine (unencrypted local files).")
+        self._fill_list()
 
     def _fill_list(self) -> None:
         self.vault_list.clear()
@@ -265,6 +283,7 @@ class SignatureStudio(QDialog):
 
     def _studio_state(self) -> StudioState:
         row = self.vault_list.currentItem()
+        self.pad.commit_in_progress()
         return StudioState(
             tab=self.tabs.currentIndex(),
             pad_has_strokes=bool(self.pad.strokes),
@@ -285,17 +304,13 @@ class SignatureStudio(QDialog):
             self.tabs.setCurrentIndex(3)
             self.vault_status.setText(msg)
 
-    def _unlock(self) -> None:
+    def _migrate(self) -> None:
         err = validate_unlock(self._studio_state())
         if err:
             self._show_feedback(err, vault=True)
             return
-        pw = self.pass_edit.text()
         try:
-            if self.vault.is_first_use():
-                self.vault.set_passphrase(pw)
-            else:
-                self.vault.unlock(pw)
+            self.vault.migrate(self.pass_edit.text())
         except WrongPassphrase as exc:
             self._show_feedback(str(exc), vault=True)
             return
@@ -305,10 +320,24 @@ class SignatureStudio(QDialog):
         self.pass_edit.clear()
         self.feedback.setText("")
         self._refresh_vault_status()
+        self._show_feedback("Signatures migrated. Vault is stored unencrypted.", ok=True)
+
+    def _start_empty(self) -> None:
+        r = QMessageBox.question(self, "Empty vault", VAULT_MIGRATE_FORGOT)
+        if r != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self.vault.start_empty_leaving_encrypted()
+        except VaultError as exc:
+            self._show_feedback(str(exc), vault=True)
+            return
+        self.pass_edit.clear()
+        self._refresh_vault_status()
 
     def _current_asset(self) -> SignatureAsset | None:
         tab = self.tabs.currentIndex()
         name = self.save_name.text().strip() or "Signature"
+        self.pad.commit_in_progress()
         if tab == 3:
             row = self.vault_list.currentItem()
             if not row or not self.vault.unlocked:

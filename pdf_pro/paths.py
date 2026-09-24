@@ -34,6 +34,10 @@ def vault_file() -> Path:
     return vault_dir() / "vault.bin"
 
 
+def vault_plain_file() -> Path:
+    return vault_dir() / "vault.json"
+
+
 def package_dir() -> Path:
     mp = _meipass()
     if mp is not None:

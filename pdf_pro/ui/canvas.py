@@ -199,6 +199,17 @@ class PageCanvas(QGraphicsView):
                 return g.item
         return None
 
+    def focus_overlay_item(self, item_id: str) -> None:
+        g = self._graphics.get(item_id)
+        if g is None:
+            return
+        for other in self._graphics.values():
+            other.setSelected(False)
+        g.setSelected(True)
+        self.ensureVisible(g)
+        self.centerOn(g)
+        self.viewport().update()
+
     def apply_view_rotation(self) -> None:
         t = QTransform()
         t.rotate(self.view_rotation)

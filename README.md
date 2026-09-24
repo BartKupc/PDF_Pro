@@ -60,7 +60,7 @@ pytest -q
 Headless UI tests (CI sets `QT_QPA_PLATFORM=offscreen`; skip when PySide6/PyMuPDF are missing):
 
 ```bash
-QT_QPA_PLATFORM=offscreen python -m unittest tests.test_preview_accept tests.test_qt_instance_enums -v
+QT_QPA_PLATFORM=offscreen python -m unittest tests.test_preview_accept tests.test_qt_instance_enums tests.test_signature_studio_place -v
 ```
 
 ## Install from GitHub Release (Bart publishes tags)
@@ -101,18 +101,20 @@ code-signing certificate in v1; provenance is GitHub Releases + SHA256.
 ## Signature vault
 
 Saved signatures live under `$XDG_DATA_HOME/pdf_pro/vault/` (default
-`~/.local/share/pdf_pro/vault/vault.bin`), encrypted with **AES-256-GCM**.
-The key is derived with **Argon2id** from a passphrase you set on first use.
-The passphrase is never stored. Unlock is per session. Wrong passphrase is
-rejected with a clear message and no data is exposed. Files on disk are
-ciphertext.
+`~/.local/share/pdf_pro/vault/vault.json`) as **plain local files**. This is a
+personal single-user tool; OS disk encryption is the control.
+
+If a v0.2.1 encrypted `vault.bin` is still present, the first vault open asks
+for the old passphrase **once** to migrate, then never prompts again. Cancel /
+forgot passphrase: keep the encrypted file and optionally start with an empty
+vault. PDF_Pro does not delete the old file silently.
 
 ## Build packages locally
 
 ```bash
 pip install -r requirements-dev.txt
 pyinstaller --noconfirm PDF_Pro.spec
-VERSION=0.2.1 ./packaging/linux/build.sh
+VERSION=0.2.2 ./packaging/linux/build.sh
 ```
 
 Outputs: `dist/packages/pdf-pro_<ver>_amd64.deb`,
@@ -141,7 +143,7 @@ export, certificate-backed signing.
 Implemented: open (dialog + drag-drop), progressive render, thumbnails, page
 nav, zoom / fit-width / fit-page, rotate **view**, password + corrupt notices,
 read-only source, overlay text/white-out/cover-and-replace/images/signatures,
-undo/redo, encrypted vault, pre-export preview, flatten export to a new file
+undo/redo, plain local vault, pre-export preview, flatten export to a new file
 with validation. Ribbon (Home / Amend / Pages / Sign / Export). File dialogs use Qt's
 non-native dialogs so save/open works on Ubuntu when GTK/portal dialogs fail.
 

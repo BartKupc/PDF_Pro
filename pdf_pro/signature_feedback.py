@@ -13,7 +13,7 @@ MSG_PAD_EMPTY = "Draw a signature on the pad first."
 MSG_TYPE_EMPTY = "Type a name for the signature first."
 MSG_IMAGE_EMPTY = "Upload a PNG or JPEG image first."
 MSG_NAME_EMPTY = "Enter a name in the Save as field."
-MSG_VAULT_LOCKED = "Unlock the vault first."
+MSG_VAULT_LOCKED = "Migrate or start an empty vault first."
 MSG_PASSPHRASE_EMPTY = "Enter a passphrase."
 MSG_VAULT_NO_SELECTION = "Select a saved signature from the vault."
 MSG_SAVED = "Saved to the vault."
@@ -80,6 +80,21 @@ def find_initials_asset(vault):
         if kind == "initials" or "initial" in name:
             return asset
     return None
+
+
+def signature_paint_source(data: dict) -> str:
+    """How flatten/export should paint a signature item.
+
+    Prefer the raster the studio produced. Degenerate pad strokes must not
+    hide a perfectly good PNG (v0.2.1 drew strokes first and could vanish).
+    """
+    if (data.get("png_b64") or "").strip():
+        return "png"
+    if data.get("strokes"):
+        return "strokes"
+    if (data.get("text") or "").strip():
+        return "text"
+    return "empty"
 
 
 def place_signature_on_page(

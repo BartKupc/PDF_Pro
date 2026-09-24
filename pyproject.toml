@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pdf-pro"
-version = "0.2.1"
+version = "0.2.2"
 description = "Local-first Linux app to open, amend, sign, and export PDFs without touching the original."
 readme = "README.md"
 license = { text = "AGPL-3.0-only" }
